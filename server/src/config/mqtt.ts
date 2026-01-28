@@ -13,7 +13,7 @@ const TOPICS = {
   DEVICE_REGISTER: 'smart-agri/devices/register'
 };
 
-export const initMQTT = (): MqttClient => {
+export const initMQTT = (): MqttClient | null => {
   const options: IClientOptions = {
     clientId: `smart-agri-server-${Date.now()}`,
     clean: true,
@@ -26,9 +26,31 @@ export const initMQTT = (): MqttClient => {
     options.password = process.env.MQTT_PASSWORD;
   }
 
-  const brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
-  
-  client = mqtt.connect(brokerUrl, options);
+  const rawBrokerUrl = process.env.MQTT_BROKER_URL;
+  const fallbackUrl = 'mqtt://localhost:1883';
+
+  // In production, treat MQTT as optional unless explicitly configured.
+  // This prevents hosted deployments from crashing if MQTT isn't set up yet.
+  if (process.env.NODE_ENV === 'production' && (!rawBrokerUrl || rawBrokerUrl.trim() === '')) {
+    console.warn('MQTT_BROKER_URL not set. Skipping MQTT initialization in production.');
+    return null as any;
+  }
+
+  let brokerUrl = (rawBrokerUrl && rawBrokerUrl.trim().length > 0 ? rawBrokerUrl.trim() : fallbackUrl);
+
+  // Render/hosted dashboards often provide host:port without protocol.
+  // mqtt.connect requires a protocol like mqtt:// or mqtts://
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(brokerUrl)) {
+    brokerUrl = `mqtt://${brokerUrl}`;
+  }
+
+  try {
+    client = mqtt.connect(brokerUrl, options);
+  } catch (err) {
+    console.error('MQTT initialization failed:', err);
+    // Don't crash the whole server for MQTT config issues
+    return null as any;
+  }
 
   client.on('connect', () => {
     console.log('MQTT Connected to broker');

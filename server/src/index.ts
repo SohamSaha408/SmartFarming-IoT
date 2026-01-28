@@ -100,7 +100,11 @@ const startServer = async () => {
     }
     
     // Initialize MQTT client
-    initMQTT();
+    try {
+      initMQTT();
+    } catch (err) {
+      console.error('MQTT init error (continuing without MQTT):', err);
+    }
     
     // Start server
     app.listen(PORT, () => {

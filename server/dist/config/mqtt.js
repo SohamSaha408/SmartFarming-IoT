@@ -60,8 +60,28 @@ const initMQTT = () => {
         options.username = process.env.MQTT_USERNAME;
         options.password = process.env.MQTT_PASSWORD;
     }
-    const brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
-    client = mqtt_1.default.connect(brokerUrl, options);
+    const rawBrokerUrl = process.env.MQTT_BROKER_URL;
+    const fallbackUrl = 'mqtt://localhost:1883';
+    // In production, treat MQTT as optional unless explicitly configured.
+    // This prevents hosted deployments from crashing if MQTT isn't set up yet.
+    if (process.env.NODE_ENV === 'production' && (!rawBrokerUrl || rawBrokerUrl.trim() === '')) {
+        console.warn('MQTT_BROKER_URL not set. Skipping MQTT initialization in production.');
+        return null;
+    }
+    let brokerUrl = (rawBrokerUrl && rawBrokerUrl.trim().length > 0 ? rawBrokerUrl.trim() : fallbackUrl);
+    // Render/hosted dashboards often provide host:port without protocol.
+    // mqtt.connect requires a protocol like mqtt:// or mqtts://
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(brokerUrl)) {
+        brokerUrl = `mqtt://${brokerUrl}`;
+    }
+    try {
+        client = mqtt_1.default.connect(brokerUrl, options);
+    }
+    catch (err) {
+        console.error('MQTT initialization failed:', err);
+        // Don't crash the whole server for MQTT config issues
+        return null;
+    }
     client.on('connect', () => {
         console.log('MQTT Connected to broker');
         // Subscribe to topics

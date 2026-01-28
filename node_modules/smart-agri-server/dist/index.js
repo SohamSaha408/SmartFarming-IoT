@@ -88,7 +88,12 @@ const startServer = async () => {
             console.log('Database models synchronized (alter).');
         }
         // Initialize MQTT client
-        (0, mqtt_1.initMQTT)();
+        try {
+            (0, mqtt_1.initMQTT)();
+        }
+        catch (err) {
+            console.error('MQTT init error (continuing without MQTT):', err);
+        }
         // Start server
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
