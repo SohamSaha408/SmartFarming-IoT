@@ -29,8 +29,8 @@ const PORT = process.env.PORT || 3000;
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.CLIENT_URL 
+  origin: process.env.NODE_ENV === 'production'
+    ? process.env.CLIENT_URL
     : ['http://localhost:5173', 'http://127.0.0.1:5173'],
   credentials: true
 }));
@@ -57,6 +57,11 @@ app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Root endpoint
+app.get('/', (req: Request, res: Response) => {
+  res.json({ message: 'Smart Agri Server is running. API is available at /api' });
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/farms', farmRoutes);
@@ -76,10 +81,10 @@ app.use((req: Request, res: Response) => {
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Error:', err.message);
   console.error('Stack:', err.stack);
-  
+
   res.status(500).json({
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
+    error: process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
       : err.message
   });
 });
@@ -90,7 +95,7 @@ const startServer = async () => {
     // Test database connection
     await sequelize.authenticate();
     console.log('Database connection established successfully.');
-    
+
     // IMPORTANT:
     // Do NOT auto-run `sync({ alter: true })` in hosted/prod environments.
     // It can generate unsafe/invalid ALTER statements and break startup.
@@ -99,14 +104,14 @@ const startServer = async () => {
       await sequelize.sync({ alter: true });
       console.log('Database models synchronized (alter).');
     }
-    
+
     // Initialize MQTT client
     try {
       initMQTT();
     } catch (err) {
       console.error('MQTT init error (continuing without MQTT):', err);
     }
-    
+
     // Start server
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
