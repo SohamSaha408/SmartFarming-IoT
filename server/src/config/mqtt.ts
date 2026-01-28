@@ -41,7 +41,11 @@ export const initMQTT = (): MqttClient | null => {
   // Render/hosted dashboards often provide host:port without protocol.
   // mqtt.connect requires a protocol like mqtt:// or mqtts://
   if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(brokerUrl)) {
-    brokerUrl = `mqtt://${brokerUrl}`;
+    if (brokerUrl.includes('hivemq.cloud')) {
+      brokerUrl = `mqtts://${brokerUrl}:8883`;
+    } else {
+      brokerUrl = `mqtt://${brokerUrl}`;
+    }
   }
 
   try {
@@ -54,7 +58,7 @@ export const initMQTT = (): MqttClient | null => {
 
   client.on('connect', () => {
     console.log('MQTT Connected to broker');
-    
+
     // Subscribe to topics
     Object.values(TOPICS).forEach(topic => {
       client?.subscribe(topic, (err) => {
@@ -85,7 +89,7 @@ export const initMQTT = (): MqttClient | null => {
 const handleMessage = async (topic: string, message: string) => {
   try {
     const data = JSON.parse(message);
-    
+
     if (topic.includes('/sensors/') && topic.includes('/data')) {
       await handleSensorData(topic, data);
     } else if (topic.includes('/devices/') && topic.includes('/status')) {
@@ -104,9 +108,9 @@ const handleSensorData = async (topic: string, data: any) => {
   // Extract device ID from topic: smart-agri/sensors/{deviceId}/data
   const parts = topic.split('/');
   const deviceId = parts[2];
-  
+
   console.log(`Received sensor data from device ${deviceId}:`, data);
-  
+
   // Import and use the IoT service to store sensor data
   const { storeSensorReading } = await import('../services/iot/iot.service');
   await storeSensorReading(deviceId, data);
@@ -115,9 +119,9 @@ const handleSensorData = async (topic: string, data: any) => {
 const handleDeviceStatus = async (topic: string, data: any) => {
   const parts = topic.split('/');
   const deviceId = parts[2];
-  
+
   console.log(`Device ${deviceId} status:`, data);
-  
+
   const { updateDeviceStatus } = await import('../services/iot/iot.service');
   await updateDeviceStatus(deviceId, data.status);
 };
@@ -125,9 +129,9 @@ const handleDeviceStatus = async (topic: string, data: any) => {
 const handleIrrigationAck = async (topic: string, data: any) => {
   const parts = topic.split('/');
   const deviceId = parts[2];
-  
+
   console.log(`Irrigation acknowledgment from ${deviceId}:`, data);
-  
+
   const { updateIrrigationStatus } = await import('../services/irrigation/irrigation.service');
   await updateIrrigationStatus(data.scheduleId, data.status);
 };
@@ -142,13 +146,13 @@ export const publishMessage = (topic: string, message: object): boolean => {
     console.error('MQTT client not connected');
     return false;
   }
-  
+
   client.publish(topic, JSON.stringify(message), { qos: 1 }, (err) => {
     if (err) {
       console.error('Failed to publish message:', err);
     }
   });
-  
+
   return true;
 };
 
