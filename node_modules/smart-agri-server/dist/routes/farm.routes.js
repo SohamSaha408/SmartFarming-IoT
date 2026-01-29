@@ -265,15 +265,15 @@ router.get('/:id/satellite', (0, validation_middleware_1.validate)([
             res.status(404).json({ error: 'Farm not found' });
             return;
         }
-        // For now, return a placeholder response
-        // In production, this would fetch data from satellite service
+        const startDate = req.query.startDate ? new Date(req.query.startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default to last 30 days
+        const endDate = req.query.endDate ? new Date(req.query.endDate) : new Date();
+        // Use the farm's polygon ID if available, otherwise use a generated ID based on farm ID
+        const polygonId = farm.boundary ? `poly-${farm.id}` : `mock-poly-${farm.id}`;
+        // Fetch satellite imagery
+        const imagery = await (0, satellite_service_1.getSatelliteImagery)(polygonId, startDate, endDate);
         res.json({
-            message: 'Satellite data requires a valid farm boundary polygon',
-            farm: {
-                id: farm.id,
-                name: farm.name,
-                hasBoundary: !!farm.boundary
-            }
+            farmId: farm.id,
+            imagery
         });
     }
     catch (error) {

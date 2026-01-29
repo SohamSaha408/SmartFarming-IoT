@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const path_1 = __importDefault(require("path"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
 const morgan_1 = __importDefault(require("morgan"));
@@ -59,9 +60,17 @@ app.use('/api/irrigation', irrigation_routes_1.default);
 app.use('/api/fertilization', fertilization_routes_1.default);
 app.use('/api/devices', device_routes_1.default);
 app.use('/api/notifications', notification_routes_1.default);
-// 404 handler
-app.use((req, res) => {
+// API 404 handler (Catch missing API routes first)
+app.use('/api/*', (req, res) => {
+    console.warn(`[404] API Route not found: ${req.method} ${req.originalUrl}`);
     res.status(404).json({ error: 'Route not found' });
+});
+// Serve static files from the React client
+const clientBuildPath = path_1.default.join(__dirname, '../../client/dist');
+app.use(express_1.default.static(clientBuildPath));
+// Handle React routing, return all unknown requests to React app
+app.get('*', (req, res) => {
+    res.sendFile(path_1.default.join(clientBuildPath, 'index.html'));
 });
 // Global error handler
 app.use((err, req, res, next) => {

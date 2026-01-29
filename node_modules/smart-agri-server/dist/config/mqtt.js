@@ -72,7 +72,12 @@ const initMQTT = () => {
     // Render/hosted dashboards often provide host:port without protocol.
     // mqtt.connect requires a protocol like mqtt:// or mqtts://
     if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(brokerUrl)) {
-        brokerUrl = `mqtt://${brokerUrl}`;
+        if (brokerUrl.includes('hivemq.cloud')) {
+            brokerUrl = `mqtts://${brokerUrl}:8883`;
+        }
+        else {
+            brokerUrl = `mqtt://${brokerUrl}`;
+        }
     }
     try {
         client = mqtt_1.default.connect(brokerUrl, options);

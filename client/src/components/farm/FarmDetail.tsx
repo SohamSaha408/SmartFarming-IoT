@@ -6,6 +6,18 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import { MapPinIcon, SunIcon, BeakerIcon, ChevronLeftIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
+
+// Fix for missing marker icon
+const customIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+})
 
 export default function FarmDetail() {
   const { id } = useParams<{ id: string }>()
@@ -16,7 +28,7 @@ export default function FarmDetail() {
   useEffect(() => {
     if (id) {
       fetchFarmById(id)
-      
+
       // Fetch weather
       farmsAPI.getWeather(id).then((res) => {
         setWeather(res.data)
@@ -62,21 +74,27 @@ export default function FarmDetail() {
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Map */}
-        <div className="lg:col-span-2 card p-0 overflow-hidden">
+        <div className="lg:col-span-2 card p-0 overflow-hidden relative z-0">
           <div className="h-[400px]">
-            <MapContainer
-              center={[lat, lng]}
-              zoom={15}
-              style={{ height: '100%', width: '100%' }}
-            >
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <Marker position={[lat, lng]}>
-                <Popup>{selectedFarm.name}</Popup>
-              </Marker>
-            </MapContainer>
+            {lat && lng ? (
+              <MapContainer
+                center={[lat, lng]}
+                zoom={15}
+                style={{ height: '100%', width: '100%' }}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <Marker position={[lat, lng]} icon={customIcon}>
+                  <Popup>{selectedFarm.name}</Popup>
+                </Marker>
+              </MapContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full bg-gray-100 text-gray-500">
+                Invalid coordinates
+              </div>
+            )}
           </div>
         </div>
 
@@ -98,7 +116,7 @@ export default function FarmDetail() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
                 <div>
                   <p className="text-sm text-gray-500">Humidity</p>
@@ -159,7 +177,7 @@ export default function FarmDetail() {
             Manage Crops
           </Link>
         </div>
-        
+
         {crops.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {crops.map((crop) => (
@@ -175,8 +193,8 @@ export default function FarmDetail() {
                   <span className={clsx(
                     'px-2 py-1 text-xs font-medium rounded-full',
                     crop.status === 'active' ? 'bg-green-100 text-green-700' :
-                    crop.status === 'harvested' ? 'bg-blue-100 text-blue-700' :
-                    'bg-gray-100 text-gray-700'
+                      crop.status === 'harvested' ? 'bg-blue-100 text-blue-700' :
+                        'bg-gray-100 text-gray-700'
                   )}>
                     {crop.status}
                   </span>

@@ -4,7 +4,7 @@ import { validate } from '../middleware/validation.middleware';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { Farm, Crop, IoTDevice, IrrigationSchedule } from '../models';
 import { reverseGeocode } from '../services/satellite/geocoding.service';
-import { getCurrentWeather, getWeatherForecast } from '../services/satellite/satellite.service';
+import { getCurrentWeather, getWeatherForecast, getSatelliteImagery } from '../services/satellite/satellite.service';
 
 const router = Router();
 
@@ -121,14 +121,14 @@ router.get(
           farmerId: req.farmer!.id
         },
         include: [
-          { 
-            model: Crop, 
+          {
+            model: Crop,
             as: 'crops',
             where: { status: 'active' },
             required: false
           },
-          { 
-            model: IoTDevice, 
+          {
+            model: IoTDevice,
             as: 'devices',
             where: { status: 'active' },
             required: false
@@ -316,15 +316,22 @@ router.get(
         return;
       }
 
-      // For now, return a placeholder response
-      // In production, this would fetch data from satellite service
+      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default to last 30 days
+      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
+
+      // Use the farm's polygon ID if available, otherwise use a generated ID based on farm ID
+      const polygonId = farm.boundary ? `poly-${farm.id}` : `mock-poly-${farm.id}`;
+
+      // Fetch satellite imagery
+      const imagery = await getSatelliteImagery(
+        polygonId,
+        startDate,
+        endDate
+      );
+
       res.json({
-        message: 'Satellite data requires a valid farm boundary polygon',
-        farm: {
-          id: farm.id,
-          name: farm.name,
-          hasBoundary: !!farm.boundary
-        }
+        farmId: farm.id,
+        imagery
       });
     } catch (error) {
       console.error('Get satellite data error:', error);
