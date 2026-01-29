@@ -180,8 +180,11 @@ export const getCurrentWeather = async (
       },
       weather: [{ main: current.rain > 0 ? 'Rain' : 'Clear' }]
     };
-  } catch (error) {
-    console.error('Error getting weather from Open-Meteo:', error);
+  } catch (error: any) {
+    console.error('Error getting weather from Open-Meteo:', error.message);
+    if (error.response) {
+      console.error('Open-Meteo Response:', error.response.status, error.response.data);
+    }
     return null;
   }
 };
