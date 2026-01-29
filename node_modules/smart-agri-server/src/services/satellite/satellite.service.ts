@@ -1,8 +1,7 @@
 import axios from 'axios';
 import { Farm, Crop, CropHealth } from '../../models';
 
-const AGROMONITORING_BASE_URL = 'https://api.agromonitoring.com/agro/1.0';
-const API_KEY = process.env.AGROMONITORING_API_KEY;
+const OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast';
 
 interface Polygon {
   id: string;
@@ -58,199 +57,173 @@ interface SatelliteImage {
   };
 }
 
-// Create a polygon for a farm in Agromonitoring
+// MOCK: Create a polygon for a farm (Always returns success)
 export const createPolygon = async (
   farm: Farm,
   boundary: any
 ): Promise<Polygon | null> => {
-  try {
-    if (!API_KEY) {
-      console.warn('Agromonitoring API key not configured');
-      return null;
-    }
-
-    const response = await axios.post(
-      `${AGROMONITORING_BASE_URL}/polygons?appid=${API_KEY}`,
-      {
-        name: `Farm-${farm.id}`,
-        geo_json: {
-          type: 'Feature',
-          properties: {},
-          geometry: boundary
-        }
-      }
-    );
-
-    return response.data;
-  } catch (error) {
-    console.error('Error creating polygon:', error);
-    return null;
-  }
+  // Mock success response
+  return {
+    id: `mock-poly-${farm.id}`,
+    name: `Farm-${farm.id}`,
+    center: [0, 0], // Placeholder
+    area: farm.areaHectares || 10
+  };
 };
 
-// Get polygon by ID
+// MOCK: Get polygon by ID
 export const getPolygon = async (polygonId: string): Promise<Polygon | null> => {
-  try {
-    if (!API_KEY) return null;
-
-    const response = await axios.get(
-      `${AGROMONITORING_BASE_URL}/polygons/${polygonId}?appid=${API_KEY}`
-    );
-
-    return response.data;
-  } catch (error) {
-    console.error('Error getting polygon:', error);
-    return null;
-  }
+  return {
+    id: polygonId,
+    name: 'Mock Polygon',
+    center: [0, 0],
+    area: 10
+  };
 };
 
-// Delete polygon
+// MOCK: Delete polygon
 export const deletePolygon = async (polygonId: string): Promise<boolean> => {
-  try {
-    if (!API_KEY) return false;
-
-    await axios.delete(
-      `${AGROMONITORING_BASE_URL}/polygons/${polygonId}?appid=${API_KEY}`
-    );
-
-    return true;
-  } catch (error) {
-    console.error('Error deleting polygon:', error);
-    return false;
-  }
+  return true;
 };
 
-// Get NDVI data for a polygon
+// MOCK: Get NDVI data for a polygon
 export const getNDVIData = async (
   polygonId: string,
   startDate: Date,
   endDate: Date
 ): Promise<NDVIData[]> => {
-  try {
-    if (!API_KEY) return [];
+  // Generate realistic mock data
+  const data: NDVIData[] = [];
+  const days = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
 
-    const start = Math.floor(startDate.getTime() / 1000);
-    const end = Math.floor(endDate.getTime() / 1000);
+  // Generate a data point every few days
+  for (let i = 0; i <= days; i += 3) {
+    const currentDate = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+    const mockNdviMean = 0.4 + Math.random() * 0.4; // 0.4 to 0.8 (Moderate to Healthy)
 
-    const response = await axios.get(
-      `${AGROMONITORING_BASE_URL}/ndvi?polyid=${polygonId}&start=${start}&end=${end}&appid=${API_KEY}`
-    );
-
-    return response.data;
-  } catch (error) {
-    console.error('Error getting NDVI data:', error);
-    return [];
+    data.push({
+      dt: Math.floor(currentDate.getTime() / 1000),
+      source: 'Mock Satellite',
+      dc: 0,
+      cl: 0,
+      data: {
+        std: 0.1,
+        p75: mockNdviMean + 0.05,
+        min: mockNdviMean - 0.1,
+        max: mockNdviMean + 0.1,
+        median: mockNdviMean,
+        p25: mockNdviMean - 0.05,
+        num: 100,
+        mean: mockNdviMean
+      }
+    });
   }
+  return data;
 };
 
-// Get satellite imagery for a polygon
+// MOCK: Get satellite imagery for a polygon
 export const getSatelliteImagery = async (
   polygonId: string,
   startDate: Date,
   endDate: Date
 ): Promise<SatelliteImage[]> => {
-  try {
-    if (!API_KEY) return [];
-
-    const start = Math.floor(startDate.getTime() / 1000);
-    const end = Math.floor(endDate.getTime() / 1000);
-
-    const response = await axios.get(
-      `${AGROMONITORING_BASE_URL}/image/search?polyid=${polygonId}&start=${start}&end=${end}&appid=${API_KEY}`
-    );
-
-    return response.data;
-  } catch (error) {
-    console.error('Error getting satellite imagery:', error);
-    return [];
-  }
+  // Return a single mock image
+  return [{
+    dt: Math.floor(endDate.getTime() / 1000),
+    type: 'mock',
+    dc: 0,
+    cl: 0,
+    sun: { azimuth: 100, elevation: 50 },
+    image: {
+      truecolor: 'https://placehold.co/600x400/green/white?text=Satellite+View',
+      falsecolor: 'https://placehold.co/600x400/red/white?text=False+Color',
+      ndvi: 'https://placehold.co/600x400/00aa00/white?text=NDVI+Map',
+      evi: 'https://placehold.co/600x400/00aa00/white?text=EVI+Map'
+    },
+    tile: {
+      truecolor: '',
+      falsecolor: '',
+      ndvi: '',
+      evi: ''
+    },
+    stats: {
+      ndvi: '0.65',
+      evi: '0.45'
+    },
+    data: {
+      truecolor: '',
+      falsecolor: '',
+      ndvi: '',
+      evi: ''
+    }
+  }];
 };
 
-// Get current weather for a location
+// REAL: Get current weather for a location using Open-Meteo
 export const getCurrentWeather = async (
   lat: number,
   lon: number
 ): Promise<any> => {
   try {
-    if (!API_KEY) return null;
-
     const response = await axios.get(
-      `${AGROMONITORING_BASE_URL}/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}`
+      `${OPEN_METEO_URL}?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,rain&timezone=auto`
     );
 
-    return response.data;
+    // Transform Open-Meteo response to match expected structure somewhat, 
+    // or just return compatible fields used by health calculation.
+    const current = response.data.current;
+
+    return {
+      main: {
+        temp: current.temperature_2m,
+        humidity: current.relative_humidity_2m
+      },
+      weather: [{ main: current.rain > 0 ? 'Rain' : 'Clear' }]
+    };
   } catch (error) {
-    console.error('Error getting weather:', error);
+    console.error('Error getting weather from Open-Meteo:', error);
     return null;
   }
 };
 
-// Get weather forecast
+// REAL: Get weather forecast using Open-Meteo
 export const getWeatherForecast = async (
   lat: number,
   lon: number
 ): Promise<any> => {
   try {
-    if (!API_KEY) return null;
-
     const response = await axios.get(
-      `${AGROMONITORING_BASE_URL}/weather/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}`
+      `${OPEN_METEO_URL}?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`
     );
-
     return response.data;
   } catch (error) {
-    console.error('Error getting forecast:', error);
+    console.error('Error getting forecast from Open-Meteo:', error);
     return null;
   }
 };
 
-// Get soil data
+// MOCK: Get soil data
 export const getSoilData = async (polygonId: string): Promise<any> => {
-  try {
-    if (!API_KEY) return null;
-
-    const response = await axios.get(
-      `${AGROMONITORING_BASE_URL}/soil?polyid=${polygonId}&appid=${API_KEY}`
-    );
-
-    return response.data;
-  } catch (error) {
-    console.error('Error getting soil data:', error);
-    return null;
-  }
+  return {
+    t0: 285, // Temp surface
+    t10: 286, // Temp 10cm
+    moisture: 0.25 // Volumetric water content
+  };
 };
 
-// Get UV Index
+// MOCK: Get UV Index
 export const getUVIndex = async (lat: number, lon: number): Promise<any> => {
-  try {
-    if (!API_KEY) return null;
-
-    const response = await axios.get(
-      `${AGROMONITORING_BASE_URL}/uvi?lat=${lat}&lon=${lon}&appid=${API_KEY}`
-    );
-
-    return response.data;
-  } catch (error) {
-    console.error('Error getting UV index:', error);
-    return null;
-  }
+  return { uvi: 5.5 };
 };
 
 // Calculate health score from NDVI
 export const calculateHealthScore = (ndvi: number): number => {
   // NDVI ranges: -1 to 1
-  // -1 to 0: water, snow, clouds, non-vegetated
-  // 0 to 0.2: bare soil, rocks
-  // 0.2 to 0.4: sparse vegetation
-  // 0.4 to 0.6: moderate vegetation
-  // 0.6 to 0.8: dense vegetation
-  // 0.8 to 1: very dense vegetation
-  
   if (ndvi < 0) return 0;
-  if (ndvi < 0.2) return Math.round(ndvi * 100); // 0-20
-  if (ndvi < 0.4) return Math.round(20 + (ndvi - 0.2) * 150); // 20-50
-  if (ndvi < 0.6) return Math.round(50 + (ndvi - 0.4) * 150); // 50-80
-  return Math.round(80 + (ndvi - 0.6) * 50); // 80-100
+  if (ndvi < 0.2) return Math.round(ndvi * 100);
+  if (ndvi < 0.4) return Math.round(20 + (ndvi - 0.2) * 150);
+  if (ndvi < 0.6) return Math.round(50 + (ndvi - 0.4) * 150);
+  return Math.round(80 + (ndvi - 0.6) * 50);
 };
 
 // Determine health status from score
@@ -306,15 +279,15 @@ export const generateRecommendations = (
   return recommendations;
 };
 
-// Fetch and store crop health data
+// Fetch and store crop health data (Uses Mocks + Open-Meteo)
 export const updateCropHealth = async (crop: Crop, polygonId: string): Promise<CropHealth | null> => {
   try {
     const endDate = new Date();
     const startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000); // Last 7 days
 
-    // Get NDVI data
+    // Get Mock NDVI data
     const ndviData = await getNDVIData(polygonId, startDate, endDate);
-    
+
     if (ndviData.length === 0) {
       return null;
     }
@@ -323,7 +296,7 @@ export const updateCropHealth = async (crop: Crop, polygonId: string): Promise<C
     const latestNDVI = ndviData[ndviData.length - 1];
     const ndviValue = latestNDVI.data.mean;
 
-    // Get weather data
+    // Get Real Weather data
     const farm = await Farm.findByPk(crop.farmId);
     let weatherData = null;
     if (farm) {
@@ -336,10 +309,10 @@ export const updateCropHealth = async (crop: Crop, polygonId: string): Promise<C
     // Calculate health metrics
     const healthScore = calculateHealthScore(ndviValue);
     const healthStatus = getHealthStatus(healthScore);
-    
+
     const temperature = weatherData?.main?.temp || null;
     const humidity = weatherData?.main?.humidity || null;
-    const moisture = null; // Would come from sensors or satellite
+    const moisture = null; // Would come from sensors
 
     const recommendations = generateRecommendations(
       healthScore,
@@ -348,14 +321,14 @@ export const updateCropHealth = async (crop: Crop, polygonId: string): Promise<C
       temperature
     );
 
-    // Get satellite image URL
+    // Get Mock satellite image URL
     const imagery = await getSatelliteImagery(polygonId, startDate, endDate);
     const satelliteImageUrl = imagery.length > 0 ? imagery[imagery.length - 1].image.ndvi : null;
 
     // Create health record
     const healthRecord = await CropHealth.create({
       cropId: crop.id,
-      recordedAt: new Date(latestNDVI.dt * 1000),
+      recordedAt: new Date(),
       ndviValue,
       healthScore,
       healthStatus,
@@ -366,7 +339,7 @@ export const updateCropHealth = async (crop: Crop, polygonId: string): Promise<C
       soilMoisture: null,
       recommendations,
       satelliteImageUrl,
-      dataSource: 'agromonitoring'
+      dataSource: 'mock-agromonitoring'
     });
 
     return healthRecord;
