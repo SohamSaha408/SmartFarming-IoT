@@ -8,6 +8,77 @@ const models_1 = require("../models");
 const sequelize_1 = require("sequelize");
 const router = (0, express_1.Router)();
 router.use(auth_middleware_1.authenticate);
+// Get crop rankings (healthiest and weakest)
+router.get('/rankings/all', (0, validation_middleware_1.validate)([
+    (0, express_validator_1.query)('landType')
+        .optional()
+        .isIn(['alluvial', 'black', 'red', 'laterite', 'desert', 'mountain', 'forest'])
+]), async (req, res) => {
+    try {
+        // Get all farms owned by this farmer
+        const farmWhere = { farmerId: req.farmer.id };
+        if (req.query.landType) {
+            farmWhere.landType = req.query.landType;
+        }
+        const farms = await models_1.Farm.findAll({
+            where: farmWhere,
+            attributes: ['id']
+        });
+        const farmIds = farms.map(f => f.id);
+        // Get all active crops with their latest health records
+        const crops = await models_1.Crop.findAll({
+            where: {
+                farmId: { [sequelize_1.Op.in]: farmIds },
+                status: 'active'
+            },
+            include: [
+                {
+                    model: models_1.Farm,
+                    as: 'farm',
+                    attributes: ['name', 'landType']
+                },
+                {
+                    model: models_1.CropHealth,
+                    as: 'healthRecords',
+                    limit: 1,
+                    order: [['recordedAt', 'DESC']]
+                }
+            ]
+        });
+        // Calculate health scores and sort
+        const cropsWithHealth = crops.map(crop => {
+            const latestHealth = crop.healthRecords?.[0];
+            return {
+                id: crop.id,
+                cropType: crop.cropType,
+                variety: crop.variety,
+                farmName: crop.farm?.name,
+                landType: crop.farm?.landType,
+                healthScore: latestHealth?.healthScore || 0,
+                healthStatus: latestHealth?.healthStatus || 'unknown',
+                ndviValue: latestHealth?.ndviValue,
+                lastUpdated: latestHealth?.recordedAt
+            };
+        });
+        // Sort by health score
+        const sorted = cropsWithHealth.sort((a, b) => b.healthScore - a.healthScore);
+        // Get top 5 healthiest and bottom 5 weakest
+        const healthiest = sorted.slice(0, 5);
+        const weakest = sorted.slice(-5).reverse();
+        res.json({
+            healthiest,
+            weakest,
+            totalCrops: crops.length,
+            averageHealth: cropsWithHealth.length > 0
+                ? Math.round(cropsWithHealth.reduce((sum, c) => sum + c.healthScore, 0) / cropsWithHealth.length)
+                : 0
+        });
+    }
+    catch (error) {
+        console.error('Get rankings error:', error);
+        res.status(500).json({ error: 'Failed to fetch crop rankings' });
+    }
+});
 // Get all crops for a farm
 router.get('/farm/:farmId', (0, validation_middleware_1.validate)([
     (0, express_validator_1.param)('farmId').isUUID().withMessage('Invalid farm ID')
@@ -234,77 +305,6 @@ router.get('/:id/health', (0, validation_middleware_1.validate)([
     catch (error) {
         console.error('Get health history error:', error);
         res.status(500).json({ error: 'Failed to fetch health history' });
-    }
-});
-// Get crop rankings (healthiest and weakest)
-router.get('/rankings/all', (0, validation_middleware_1.validate)([
-    (0, express_validator_1.query)('landType')
-        .optional()
-        .isIn(['alluvial', 'black', 'red', 'laterite', 'desert', 'mountain', 'forest'])
-]), async (req, res) => {
-    try {
-        // Get all farms owned by this farmer
-        const farmWhere = { farmerId: req.farmer.id };
-        if (req.query.landType) {
-            farmWhere.landType = req.query.landType;
-        }
-        const farms = await models_1.Farm.findAll({
-            where: farmWhere,
-            attributes: ['id']
-        });
-        const farmIds = farms.map(f => f.id);
-        // Get all active crops with their latest health records
-        const crops = await models_1.Crop.findAll({
-            where: {
-                farmId: { [sequelize_1.Op.in]: farmIds },
-                status: 'active'
-            },
-            include: [
-                {
-                    model: models_1.Farm,
-                    as: 'farm',
-                    attributes: ['name', 'landType']
-                },
-                {
-                    model: models_1.CropHealth,
-                    as: 'healthRecords',
-                    limit: 1,
-                    order: [['recordedAt', 'DESC']]
-                }
-            ]
-        });
-        // Calculate health scores and sort
-        const cropsWithHealth = crops.map(crop => {
-            const latestHealth = crop.healthRecords?.[0];
-            return {
-                id: crop.id,
-                cropType: crop.cropType,
-                variety: crop.variety,
-                farmName: crop.farm?.name,
-                landType: crop.farm?.landType,
-                healthScore: latestHealth?.healthScore || 0,
-                healthStatus: latestHealth?.healthStatus || 'unknown',
-                ndviValue: latestHealth?.ndviValue,
-                lastUpdated: latestHealth?.recordedAt
-            };
-        });
-        // Sort by health score
-        const sorted = cropsWithHealth.sort((a, b) => b.healthScore - a.healthScore);
-        // Get top 5 healthiest and bottom 5 weakest
-        const healthiest = sorted.slice(0, 5);
-        const weakest = sorted.slice(-5).reverse();
-        res.json({
-            healthiest,
-            weakest,
-            totalCrops: crops.length,
-            averageHealth: cropsWithHealth.length > 0
-                ? Math.round(cropsWithHealth.reduce((sum, c) => sum + c.healthScore, 0) / cropsWithHealth.length)
-                : 0
-        });
-    }
-    catch (error) {
-        console.error('Get rankings error:', error);
-        res.status(500).json({ error: 'Failed to fetch crop rankings' });
     }
 });
 exports.default = router;

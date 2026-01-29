@@ -9,10 +9,27 @@ import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
 // Fix for missing marker icon
-// Fix for missing marker icon
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
+import { useMap } from 'react-leaflet'
+
+// Fix Leaflet's default icon path issues
+delete (L.Icon.Default.prototype as any)._getIconUrl
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+})
+
+// Component to handle map resizing
+function ResizeMap() {
+  const map = useMap()
+  useEffect(() => {
+    map.invalidateSize()
+  }, [map])
+  return null
+}
 
 const customIcon = new L.Icon({
   iconUrl: markerIcon,
@@ -83,14 +100,15 @@ export default function FarmDetail() {
           <div className="h-[400px]">
             {lat && lng ? (
               <MapContainer
-                key={`${lat}-${lng}`}
+                key={`${lat}-${lng}`} // Force re-render on coord change
                 center={[lat, lng]}
                 zoom={15}
                 style={{ height: '100%', width: '100%' }}
               >
+                <ResizeMap />
                 <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
                 <Marker position={[lat, lng]} icon={customIcon}>
                   <Popup>{selectedFarm.name}</Popup>

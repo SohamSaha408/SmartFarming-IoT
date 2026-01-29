@@ -10,6 +10,88 @@ const router = Router();
 
 router.use(authenticate);
 
+// Get crop rankings (healthiest and weakest)
+router.get(
+  '/rankings/all',
+  validate([
+    query('landType')
+      .optional()
+      .isIn(['alluvial', 'black', 'red', 'laterite', 'desert', 'mountain', 'forest'])
+  ]),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      // Get all farms owned by this farmer
+      const farmWhere: any = { farmerId: req.farmer!.id };
+      if (req.query.landType) {
+        farmWhere.landType = req.query.landType;
+      }
+
+      const farms = await Farm.findAll({
+        where: farmWhere,
+        attributes: ['id']
+      });
+
+      const farmIds = farms.map(f => f.id);
+
+      // Get all active crops with their latest health records
+      const crops = await Crop.findAll({
+        where: {
+          farmId: { [Op.in]: farmIds },
+          status: 'active'
+        },
+        include: [
+          {
+            model: Farm,
+            as: 'farm',
+            attributes: ['name', 'landType']
+          },
+          {
+            model: CropHealth,
+            as: 'healthRecords',
+            limit: 1,
+            order: [['recordedAt', 'DESC']]
+          }
+        ]
+      });
+
+      // Calculate health scores and sort
+      const cropsWithHealth = crops.map(crop => {
+        const latestHealth = (crop as any).healthRecords?.[0];
+        return {
+          id: crop.id,
+          cropType: crop.cropType,
+          variety: crop.variety,
+          farmName: (crop as any).farm?.name,
+          landType: (crop as any).farm?.landType,
+          healthScore: latestHealth?.healthScore || 0,
+          healthStatus: latestHealth?.healthStatus || 'unknown',
+          ndviValue: latestHealth?.ndviValue,
+          lastUpdated: latestHealth?.recordedAt
+        };
+      });
+
+      // Sort by health score
+      const sorted = cropsWithHealth.sort((a, b) => b.healthScore - a.healthScore);
+
+      // Get top 5 healthiest and bottom 5 weakest
+      const healthiest = sorted.slice(0, 5);
+      const weakest = sorted.slice(-5).reverse();
+
+      res.json({
+        healthiest,
+        weakest,
+        totalCrops: crops.length,
+        averageHealth: cropsWithHealth.length > 0
+          ? Math.round(cropsWithHealth.reduce((sum, c) => sum + c.healthScore, 0) / cropsWithHealth.length)
+          : 0
+      });
+    } catch (error) {
+      console.error('Get rankings error:', error);
+      res.status(500).json({ error: 'Failed to fetch crop rankings' });
+    }
+  }
+);
+
 // Get all crops for a farm
 router.get(
   '/farm/:farmId',
@@ -281,86 +363,6 @@ router.get(
   }
 );
 
-// Get crop rankings (healthiest and weakest)
-router.get(
-  '/rankings/all',
-  validate([
-    query('landType')
-      .optional()
-      .isIn(['alluvial', 'black', 'red', 'laterite', 'desert', 'mountain', 'forest'])
-  ]),
-  async (req: AuthRequest, res: Response) => {
-    try {
-      // Get all farms owned by this farmer
-      const farmWhere: any = { farmerId: req.farmer!.id };
-      if (req.query.landType) {
-        farmWhere.landType = req.query.landType;
-      }
 
-      const farms = await Farm.findAll({
-        where: farmWhere,
-        attributes: ['id']
-      });
-
-      const farmIds = farms.map(f => f.id);
-
-      // Get all active crops with their latest health records
-      const crops = await Crop.findAll({
-        where: {
-          farmId: { [Op.in]: farmIds },
-          status: 'active'
-        },
-        include: [
-          {
-            model: Farm,
-            as: 'farm',
-            attributes: ['name', 'landType']
-          },
-          {
-            model: CropHealth,
-            as: 'healthRecords',
-            limit: 1,
-            order: [['recordedAt', 'DESC']]
-          }
-        ]
-      });
-
-      // Calculate health scores and sort
-      const cropsWithHealth = crops.map(crop => {
-        const latestHealth = (crop as any).healthRecords?.[0];
-        return {
-          id: crop.id,
-          cropType: crop.cropType,
-          variety: crop.variety,
-          farmName: (crop as any).farm?.name,
-          landType: (crop as any).farm?.landType,
-          healthScore: latestHealth?.healthScore || 0,
-          healthStatus: latestHealth?.healthStatus || 'unknown',
-          ndviValue: latestHealth?.ndviValue,
-          lastUpdated: latestHealth?.recordedAt
-        };
-      });
-
-      // Sort by health score
-      const sorted = cropsWithHealth.sort((a, b) => b.healthScore - a.healthScore);
-
-      // Get top 5 healthiest and bottom 5 weakest
-      const healthiest = sorted.slice(0, 5);
-      const weakest = sorted.slice(-5).reverse();
-
-      res.json({
-        healthiest,
-        weakest,
-        totalCrops: crops.length,
-        averageHealth: cropsWithHealth.length > 0
-          ? Math.round(cropsWithHealth.reduce((sum, c) => sum + c.healthScore, 0) / cropsWithHealth.length)
-          : 0
-      });
-    } catch (error) {
-      console.error('Get rankings error:', error);
-      res.status(500).json({ error: 'Failed to fetch crop rankings' });
-    }
-  }
-);
 
 export default router;
