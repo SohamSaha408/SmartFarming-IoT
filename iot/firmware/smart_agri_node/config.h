@@ -2,8 +2,8 @@
 #define CONFIG_H
 
 // WiFi Configuration
-#define WIFI_SSID "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+#define WIFI_SSID "Airtel_bhav_3889"
+#define WIFI_PASSWORD "Air@25735"
 
 // MQTT Configuration
 #define MQTT_SERVER "b27eb4515006479e92387879c5b81538.s1.eu.hivemq.cloud"
