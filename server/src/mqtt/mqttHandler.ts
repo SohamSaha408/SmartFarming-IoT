@@ -2,7 +2,7 @@ import mqtt from 'mqtt';
 import { logger } from '../utils/logger';
 
 // TODO: Import services for data storage and alerts
-// import { saveSensorData } from '../services/sensor.service';
+import { saveSensorData } from '../services/sensor.service';
 // import { checkAlerts } from '../services/alert.service';
 
 let client: mqtt.MqttClient;
@@ -79,8 +79,8 @@ const handleMessage = async (topic: string, payload: any) => {
         // This logic adapts to: farm/{farmId}/sensor/{nodeId}
         // Payload should contain: { type: 'soil', value: 30, unit: '%' } or similar
 
-        // Placeholder for data persistence
-        // await saveSensorData(farmId, nodeId, payload);
+        // Data persistence
+        await saveSensorData(farmId, nodeId, payload);
 
         // Placeholder for alert checking
         // await checkAlerts(farmId, nodeId, payload);
