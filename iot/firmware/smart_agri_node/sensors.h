@@ -17,14 +17,17 @@ struct SensorData {
 };
 
 void setupSensors() {
+  Serial.println("Initializing Sensors...");
   dht.begin();
   Wire.begin(PIN_SDA, PIN_SCL);
   
+  // Try to initialize BH1750, but don't hang if missing
   if (lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE)) {
     Serial.println(F("BH1750 Initialized"));
   } else {
-    Serial.println(F("Error initializing BH1750"));
+    Serial.println(F("Warning: BH1750 not found (Check wiring)"));
   }
+  Serial.println("Sensors setup complete.");
   
   pinMode(PIN_SOIL_MOISTURE, INPUT);
 }
