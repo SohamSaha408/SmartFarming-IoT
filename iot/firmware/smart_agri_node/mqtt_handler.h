@@ -6,13 +6,16 @@
 #include <ArduinoJson.h>
 #include "config.h"
 
-WiFiClient espClient;
+#include <WiFiClientSecure.h>
+
+WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
 // Forward declaration
 void callback(char* topic, byte* payload, unsigned int length);
 
 void setupMQTT() {
+  espClient.setInsecure(); // Skip certificate validation for easier setup
   client.setServer(MQTT_SERVER, MQTT_PORT);
   client.setCallback(callback);
 }

@@ -6,10 +6,10 @@
 #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 
 // MQTT Configuration
-#define MQTT_SERVER "192.168.1.100"  // Change to your server IP
-#define MQTT_PORT 1883
-#define MQTT_USER "iot_device"
-#define MQTT_PASSWORD "iot_secure_2024"
+#define MQTT_SERVER "b27eb4515006479e92387879c5b81538.s1.eu.hivemq.cloud"
+#define MQTT_PORT 8883
+#define MQTT_USER "Soham"
+#define MQTT_PASSWORD "Remy_Lebeau1"
 
 // Device Identity
 #define FARM_ID "farm_001"
