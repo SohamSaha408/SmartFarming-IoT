@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useFarmStore } from '../../store/farmStore'
-import { farmsAPI, cropsAPI } from '../../services/api'
+import { farmsAPI, cropsAPI, devicesAPI } from '../../services/api'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import { MapPinIcon, SunIcon, BeakerIcon, ChevronLeftIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
+import SensorChart from '../common/SensorChart'
 
 // Fix for missing marker icon
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
@@ -46,6 +47,10 @@ export default function FarmDetail() {
   const { selectedFarm, fetchFarmById, isLoading } = useFarmStore()
   const [weather, setWeather] = useState<any>(null)
   const [crops, setCrops] = useState<any[]>([])
+  const [devices, setDevices] = useState<any[]>([])
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null)
+  const [readings, setReadings] = useState<any[]>([])
+  const [isReadingsLoading, setIsReadingsLoading] = useState(false)
 
   useEffect(() => {
     if (id) {
@@ -60,8 +65,34 @@ export default function FarmDetail() {
       cropsAPI.getByFarm(id).then((res) => {
         setCrops(res.data.crops)
       }).catch(console.error)
+
+      // Fetch devices
+      devicesAPI.getAll().then((res) => {
+        const farmDevices = res.data.devices.filter((d: any) => d.farmId === id)
+        setDevices(farmDevices)
+        if (farmDevices.length > 0) {
+          setSelectedDevice(farmDevices[0].id)
+        }
+      }).catch(console.error)
     }
   }, [id, fetchFarmById])
+
+  // Fetch readings when device selected
+  useEffect(() => {
+    if (selectedDevice) {
+      setIsReadingsLoading(true)
+      devicesAPI.getReadings(selectedDevice, { limit: 50 })
+        .then((res) => {
+          // Sort by date ascending for chart
+          const sorted = [...res.data.readings].sort((a: any, b: any) =>
+            new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
+          )
+          setReadings(sorted)
+        })
+        .catch(console.error)
+        .finally(() => setIsReadingsLoading(false))
+    }
+  }, [selectedDevice])
 
   if (isLoading || !selectedFarm) {
     return (
@@ -161,6 +192,47 @@ export default function FarmDetail() {
           )}
         </div>
       </div>
+
+      {/* Sensor Data Section */}
+      {devices.length > 0 && (
+        <div className="grid lg:grid-cols-2 gap-6">
+          <div className="lg:col-span-2 flex items-center justify-between">
+            <h2 className="text-xl font-bold text-gray-900">Sensor History</h2>
+            <select
+              value={selectedDevice || ''}
+              onChange={(e) => setSelectedDevice(e.target.value)}
+              className="input-field max-w-xs"
+            >
+              {devices.map(d => (
+                <option key={d.id} value={d.id}>{d.name} ({d.deviceType})</option>
+              ))}
+            </select>
+          </div>
+
+          {isReadingsLoading ? (
+            <div className="lg:col-span-2 text-center py-12">Loading chart data...</div>
+          ) : readings.length > 0 ? (
+            <>
+              <SensorChart
+                data={readings}
+                dataKey="soilMoisture"
+                color="#0ea5e9" // Sky 500
+                title="Soil Moisture"
+                unit="%"
+              />
+              <SensorChart
+                data={readings}
+                dataKey="airTemperature"
+                color="#f97316" // Orange 500
+                title="Temperature"
+                unit="°C"
+              />
+            </>
+          ) : (
+            <p className="lg:col-span-2 text-gray-500 text-center py-8">No sensor data available for this device.</p>
+          )}
+        </div>
+      )}
 
       {/* Farm Details */}
       <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">

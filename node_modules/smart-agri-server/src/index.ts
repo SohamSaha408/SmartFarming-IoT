@@ -22,7 +22,8 @@ import notificationRoutes from './routes/notification.routes';
 import { sequelize } from './config/database';
 
 // Import MQTT client
-import { initMQTT } from './config/mqtt';
+import { initMQTT } from './mqtt/mqttHandler';
+import { logger } from './utils/logger';
 
 const app: Application = express();
 const PORT = process.env.PORT || 3000;

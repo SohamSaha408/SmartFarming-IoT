@@ -5,13 +5,11 @@ import toast from 'react-hot-toast'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { isAuthenticated, sendOTP, verifyOTP, error } = useAuthStore()
-  
-  const [step, setStep] = useState<'phone' | 'otp'>('phone')
-  const [phone, setPhone] = useState('')
-  const [otp, setOtp] = useState('')
+  const { isAuthenticated, login, error } = useAuthStore()
+
+  const [identifier, setIdentifier] = useState('')
+  const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [countdown, setCountdown] = useState(0)
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -19,62 +17,22 @@ export default function Login() {
     }
   }, [isAuthenticated, navigate])
 
-  useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [countdown])
-
-  const handleSendOTP = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!phone || phone.length < 10) {
-      toast.error('Please enter a valid 10-digit phone number')
+    if (!identifier || !password) {
+      toast.error('Please enter email/phone and password')
       return
     }
 
     setIsLoading(true)
-    const success = await sendOTP(phone)
-    setIsLoading(false)
-
-    if (success) {
-      setStep('otp')
-      setCountdown(60)
-      toast.success('OTP sent successfully!')
-    } else {
-      toast.error(error || 'Failed to send OTP')
-    }
-  }
-
-  const handleVerifyOTP = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!otp || otp.length < 4) {
-      toast.error('Please enter a valid OTP')
-      return
-    }
-
-    setIsLoading(true)
-    const success = await verifyOTP(phone, otp)
+    const success = await login(identifier, password)
     setIsLoading(false)
 
     if (success) {
       toast.success('Login successful!')
       navigate('/')
     } else {
-      toast.error(error || 'Invalid OTP')
-    }
-  }
-
-  const handleResendOTP = async () => {
-    if (countdown > 0) return
-    
-    setIsLoading(true)
-    const success = await sendOTP(phone)
-    setIsLoading(false)
-
-    if (success) {
-      setCountdown(60)
-      toast.success('OTP resent!')
+      toast.error(error || 'Login failed')
     }
   }
 
@@ -92,109 +50,56 @@ export default function Login() {
           <p className="text-gray-500 mt-2">Monitor and manage your farm intelligently</p>
         </div>
 
-        {step === 'phone' ? (
-          <form onSubmit={handleSendOTP}>
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Phone Number
-              </label>
-              <div className="flex">
-                <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
-                  +91
-                </span>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  placeholder="Enter 10-digit number"
-                  className="input rounded-l-none"
-                  maxLength={10}
-                  required
-                />
-              </div>
-            </div>
+        <form onSubmit={handleLogin}>
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Email or Phone
+            </label>
+            <input
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="admin@smartagri.com"
+              className="input"
+              required
+            />
+          </div>
 
-            <button
-              type="submit"
-              disabled={isLoading || phone.length < 10}
-              className="btn-primary w-full py-3 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Sending OTP...
-                </span>
-              ) : (
-                'Get OTP'
-              )}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleVerifyOTP}>
-            <div className="mb-4">
-              <p className="text-sm text-gray-600 text-center mb-4">
-                Enter the OTP sent to <span className="font-medium">+91 {phone}</span>
-              </p>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                OTP Code
-              </label>
-              <input
-                type="text"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="Enter 6-digit OTP"
-                className="input text-center text-2xl tracking-widest"
-                maxLength={6}
-                required
-              />
-            </div>
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="input"
+              required
+            />
+          </div>
 
-            <button
-              type="submit"
-              disabled={isLoading || otp.length < 4}
-              className="btn-primary w-full py-3 mb-4 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Verifying...
-                </span>
-              ) : (
-                'Verify & Login'
-              )}
-            </button>
-
-            <div className="flex items-center justify-between text-sm">
-              <button
-                type="button"
-                onClick={() => {
-                  setStep('phone')
-                  setOtp('')
-                }}
-                className="text-gray-600 hover:text-gray-800"
-              >
-                Change Number
-              </button>
-              <button
-                type="button"
-                onClick={handleResendOTP}
-                disabled={countdown > 0 || isLoading}
-                className="text-primary-600 hover:text-primary-700 disabled:text-gray-400 disabled:cursor-not-allowed"
-              >
-                {countdown > 0 ? `Resend in ${countdown}s` : 'Resend OTP'}
-              </button>
-            </div>
-          </form>
-        )}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="btn-primary w-full py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isLoading ? (
+              <span className="flex items-center justify-center">
+                <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Logging in...
+              </span>
+            ) : (
+              'Login'
+            )}
+          </button>
+        </form>
 
         <div className="mt-8 pt-6 border-t border-gray-200 text-center text-xs text-gray-500">
-          By continuing, you agree to our Terms of Service and Privacy Policy
+          <p>Default Admin: admin@smartagri.com / admin123</p>
         </div>
       </div>
     </div>

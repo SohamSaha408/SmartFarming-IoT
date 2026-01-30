@@ -21,7 +21,7 @@ interface CropAttributes {
   updatedAt?: Date;
 }
 
-interface CropCreationAttributes extends Optional<CropAttributes, 'id' | 'variety' | 'plantedDate' | 'expectedHarvestDate' | 'actualHarvestDate' | 'status' | 'zoneBoundary' | 'areaHectares' | 'expectedYieldKg' | 'actualYieldKg' | 'notes'> {}
+interface CropCreationAttributes extends Optional<CropAttributes, 'id' | 'variety' | 'plantedDate' | 'expectedHarvestDate' | 'actualHarvestDate' | 'status' | 'zoneBoundary' | 'areaHectares' | 'expectedYieldKg' | 'actualYieldKg' | 'notes'> { }
 
 class Crop extends Model<CropAttributes, CropCreationAttributes> implements CropAttributes {
   public id!: string;
@@ -107,6 +107,7 @@ Crop.init(
     sequelize,
     tableName: 'crops',
     modelName: 'Crop',
+    underscored: true,
     indexes: [
       {
         fields: ['farm_id']

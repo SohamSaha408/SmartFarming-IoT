@@ -21,7 +21,7 @@ interface FarmAttributes {
   updatedAt?: Date;
 }
 
-interface FarmCreationAttributes extends Optional<FarmAttributes, 'id' | 'boundary' | 'areaHectares' | 'landType' | 'soilPh' | 'district' | 'state' | 'village' | 'pincode'> {}
+interface FarmCreationAttributes extends Optional<FarmAttributes, 'id' | 'boundary' | 'areaHectares' | 'landType' | 'soilPh' | 'district' | 'state' | 'village' | 'pincode'> { }
 
 class Farm extends Model<FarmAttributes, FarmCreationAttributes> implements FarmAttributes {
   public id!: string;
@@ -119,6 +119,7 @@ Farm.init(
     sequelize,
     tableName: 'farms',
     modelName: 'Farm',
+    underscored: true,
     indexes: [
       {
         fields: ['farmer_id']

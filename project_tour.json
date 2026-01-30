@@ -1,0 +1,63 @@
+{
+    "projectInfo": {
+        "name": "Smart Agri IoT Platform",
+        "description": "A comprehensive IoT-enabled platform for smart agriculture management. It allows farmers to monitor farms, track crop health using satellite data (simulated/mocked), manage irrigation schedules, and receive critical alerts from IoT devices.",
+        "purpose": "To empower farmers with data-driven insights for optimizing crop yield and resource usage (water, fertilizers) while providing real-time monitoring of field conditions."
+    },
+    "technologyStack": {
+        "frontend": {
+            "framework": "React 18",
+            "buildTool": "Vite",
+            "language": "TypeScript",
+            "styling": "Tailwind CSS",
+            "maps": "Leaflet / React-Leaflet (OpenStreetMap)",
+            "charts": "Recharts",
+            "stateManagement": "Zustand"
+        },
+        "backend": {
+            "framework": "Express.js",
+            "runtime": "Node.js",
+            "language": "TypeScript",
+            "databaseORM": "Sequelize (PostgreSQL support)",
+            "iotProtocol": "MQTT (using `mqtt` library)",
+            "security": "Helmet (CSP configured), CORS, JWT Authentication"
+        },
+        "externalServices": {
+            "weather": "Open-Meteo API (Current weather & Forecasts)",
+            "satellite": "Mocked Service (Simulates NDVI, EVI, and Satellite Imagery)",
+            "geocoding": "Mocked Reverse Geocoding"
+        }
+    },
+    "keyFeatures": [
+        {
+            "name": "Farm Management",
+            "description": "Create and manage farms with geospatial boundaries. Visualized on an interactive map."
+        },
+        {
+            "name": "Crop Health Monitoring",
+            "description": "Tracks crop performance using NDVI indices (mocked). Calculates health scores and generates automated recommendations (e.g., 'Water needed', 'Pest risk')."
+        },
+        {
+            "name": "Real-time Dashboard",
+            "description": "Aggregated view of total farms, active crops, critical alerts, and weather conditions."
+        },
+        {
+            "name": "IoT Device Integration",
+            "description": "Supports registration and monitoring of IoT devices (sensors/actuators) via MQTT."
+        },
+        {
+            "name": "Irrigation Scheduling",
+            "description": "Tools to schedule and track irrigation events based on soil moisture and weather data."
+        }
+    ],
+    "architecture": {
+        "client": "Single Page Application (SPA) served by Vite dev server or Nginx in production.",
+        "server": "RESTful API with layered architecture (Routes -> Controllers/Services -> Models).",
+        "deployment": "Dockerized setup (docker-compose.yml available) with separate services for Client, Server, Database, and MQTT Broker."
+    },
+    "currentStatus": {
+        "mapStatus": "Functional. Uses OpenStreetMap tiles with custom markers.",
+        "apiStatus": "Functional. Critical route ordering bugs resolved.",
+        "development": "Active. Client and Server builds verified passing."
+    }
+}

@@ -23,7 +23,7 @@ interface IrrigationScheduleAttributes {
   updatedAt?: Date;
 }
 
-interface IrrigationScheduleCreationAttributes extends Optional<IrrigationScheduleAttributes, 'id' | 'cropId' | 'deviceId' | 'waterVolumeLiters' | 'status' | 'executedAt' | 'completedAt' | 'actualVolumeLiters' | 'notes' | 'weatherCondition'> {}
+interface IrrigationScheduleCreationAttributes extends Optional<IrrigationScheduleAttributes, 'id' | 'cropId' | 'deviceId' | 'waterVolumeLiters' | 'status' | 'executedAt' | 'completedAt' | 'actualVolumeLiters' | 'notes' | 'weatherCondition'> { }
 
 class IrrigationSchedule extends Model<IrrigationScheduleAttributes, IrrigationScheduleCreationAttributes> implements IrrigationScheduleAttributes {
   public id!: string;
@@ -127,6 +127,7 @@ IrrigationSchedule.init(
     sequelize,
     tableName: 'irrigation_schedules',
     modelName: 'IrrigationSchedule',
+    underscored: true,
     indexes: [
       {
         fields: ['farm_id']

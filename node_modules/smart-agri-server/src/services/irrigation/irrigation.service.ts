@@ -1,5 +1,5 @@
 import { Farm, Crop, CropHealth, IoTDevice, SensorReading, IrrigationSchedule } from '../../models';
-import { sendIrrigationCommand } from '../../config/mqtt';
+import { publishCommand } from '../../mqtt/mqttHandler';
 import { getCurrentWeather, getWeatherForecast } from '../satellite/satellite.service';
 import { createNotification } from '../notification/notification.service';
 
@@ -43,12 +43,12 @@ export const calculateIrrigationNeed = async (
     let recommendedDuration = 30; // default 30 minutes
 
     // Check soil moisture from sensors
-    const soilMoisture = sensorData?.soilMoisture 
-      ? parseFloat(sensorData.soilMoisture.toString()) 
+    const soilMoisture = sensorData?.soilMoisture
+      ? parseFloat(sensorData.soilMoisture.toString())
       : null;
 
     // Check satellite-derived moisture
-    const satelliteMoisture = latestHealth?.moistureLevel 
+    const satelliteMoisture = latestHealth?.moistureLevel
       ? parseFloat(latestHealth.moistureLevel.toString())
       : null;
 
@@ -59,7 +59,7 @@ export const calculateIrrigationNeed = async (
     const lat = parseFloat(farm.latitude.toString());
     const lon = parseFloat(farm.longitude.toString());
     const forecast = await getWeatherForecast(lat, lon);
-    
+
     // Check if rain is expected in next 24 hours
     const rainExpected = forecast?.list?.some((item: any) => {
       const itemTime = new Date(item.dt * 1000);
@@ -68,8 +68,8 @@ export const calculateIrrigationNeed = async (
       return hoursDiff <= 24 && item.rain && item.rain['3h'] > 5;
     });
 
-    let weatherForecast = rainExpected 
-      ? 'Rain expected in next 24 hours' 
+    let weatherForecast = rainExpected
+      ? 'Rain expected in next 24 hours'
       : 'No significant rain expected';
 
     // Decision logic
@@ -113,10 +113,10 @@ export const calculateIrrigationNeed = async (
     }
 
     // Calculate water volume based on area
-    const areaHectares = crop.areaHectares 
-      ? parseFloat(crop.areaHectares.toString()) 
+    const areaHectares = crop.areaHectares
+      ? parseFloat(crop.areaHectares.toString())
       : 1;
-    
+
     return {
       cropId: crop.id,
       cropType: crop.cropType,
@@ -207,7 +207,7 @@ export const createIrrigationSchedule = async (
   triggeredBy: 'manual' | 'auto' | 'schedule' | 'sensor'
 ): Promise<IrrigationSchedule> => {
   const farm = await Farm.findByPk(farmId);
-  
+
   // Get weather condition at scheduling time
   let weatherCondition = null;
   if (farm) {
@@ -252,8 +252,7 @@ export const triggerIrrigation = async (
     // Send command to IoT device
     const device = (schedule as any).device;
     if (device) {
-      sendIrrigationCommand(device.deviceId, {
-        action: 'start',
+      publishCommand(schedule.farmId, device.deviceId, 'start', {
         scheduleId: schedule.id,
         durationMinutes: schedule.durationMinutes
       });
@@ -274,7 +273,7 @@ export const updateIrrigationStatus = async (
 ): Promise<void> => {
   try {
     const schedule = await IrrigationSchedule.findByPk(scheduleId);
-    
+
     if (schedule) {
       await schedule.update({
         status,

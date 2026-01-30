@@ -3,14 +3,22 @@ import { devicesAPI } from '../../services/api'
 import { CpuChipIcon, PlusIcon, SignalIcon, SignalSlashIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
+import AddDeviceModal from './AddDeviceModal'
+
 export default function Devices() {
   const [devices, setDevices] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
-  useEffect(() => {
+  const fetchDevices = () => {
+    setIsLoading(true)
     devicesAPI.getAll().then((res) => {
       setDevices(res.data.devices)
     }).finally(() => setIsLoading(false))
+  }
+
+  useEffect(() => {
+    fetchDevices()
   }, [])
 
   const getDeviceTypeLabel = (type: string) => {
@@ -49,7 +57,10 @@ export default function Devices() {
           <h1 className="text-2xl font-bold text-gray-900">IoT Devices</h1>
           <p className="text-gray-500 mt-1">Manage your connected sensors and controllers</p>
         </div>
-        <button className="btn-primary">
+        <button
+          className="btn-primary"
+          onClick={() => setIsModalOpen(true)}
+        >
           <PlusIcon className="w-5 h-5 mr-2" />
           Add Device
         </button>
@@ -116,8 +127,8 @@ export default function Devices() {
                     <span className={clsx(
                       'font-medium',
                       device.batteryLevel > 50 ? 'text-green-600' :
-                      device.batteryLevel > 20 ? 'text-yellow-600' :
-                      'text-red-600'
+                        device.batteryLevel > 20 ? 'text-yellow-600' :
+                          'text-red-600'
                     )}>
                       {device.batteryLevel}%
                     </span>
@@ -132,11 +143,21 @@ export default function Devices() {
           <CpuChipIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No devices connected</h3>
           <p className="text-gray-500 mb-6">Add IoT devices to monitor your farm in real-time</p>
-          <button className="btn-primary">
+          <button
+            className="btn-primary"
+            onClick={() => setIsModalOpen(true)}
+          >
             <PlusIcon className="w-5 h-5 mr-2" />
             Add Your First Device
           </button>
         </div>
+      )}
+
+      {isModalOpen && (
+        <AddDeviceModal
+          onClose={() => setIsModalOpen(false)}
+          onDeviceAdded={fetchDevices}
+        />
       )}
     </div>
   )

@@ -17,6 +17,7 @@ interface AuthState {
   error: string | null
   sendOTP: (phone: string) => Promise<boolean>
   verifyOTP: (phone: string, otp: string) => Promise<boolean>
+  login: (identifier: string, password: string) => Promise<boolean>
   loadProfile: () => Promise<void>
   updateProfile: (data: { name?: string; email?: string; address?: string }) => Promise<boolean>
   logout: () => void
@@ -57,6 +58,28 @@ export const useAuthStore = create<AuthState>((set) => ({
       return true
     } catch (error: any) {
       set({ error: error.response?.data?.error || 'Invalid OTP' })
+      return false
+    }
+  },
+
+  login: async (identifier: string, password: string) => {
+    try {
+      set({ error: null })
+      const response = await authAPI.login(identifier, password)
+      const { farmer, accessToken, refreshToken } = response.data
+
+      localStorage.setItem('accessToken', accessToken)
+      localStorage.setItem('refreshToken', refreshToken)
+
+      set({
+        farmer,
+        isAuthenticated: true,
+        isLoading: false,
+      })
+
+      return true
+    } catch (error: any) {
+      set({ error: error.response?.data?.error || 'Login failed' })
       return false
     }
   },

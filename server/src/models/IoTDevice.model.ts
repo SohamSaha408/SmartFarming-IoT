@@ -21,7 +21,7 @@ interface IoTDeviceAttributes {
   updatedAt?: Date;
 }
 
-interface IoTDeviceCreationAttributes extends Optional<IoTDeviceAttributes, 'id' | 'name' | 'latitude' | 'longitude' | 'status' | 'firmwareVersion' | 'lastSeenAt' | 'batteryLevel' | 'metadata'> {}
+interface IoTDeviceCreationAttributes extends Optional<IoTDeviceAttributes, 'id' | 'name' | 'latitude' | 'longitude' | 'status' | 'firmwareVersion' | 'lastSeenAt' | 'batteryLevel' | 'metadata'> { }
 
 class IoTDevice extends Model<IoTDeviceAttributes, IoTDeviceCreationAttributes> implements IoTDeviceAttributes {
   public id!: string;
@@ -108,6 +108,7 @@ IoTDevice.init(
     sequelize,
     tableName: 'iot_devices',
     modelName: 'IoTDevice',
+    underscored: true,
     indexes: [
       {
         fields: ['farm_id']

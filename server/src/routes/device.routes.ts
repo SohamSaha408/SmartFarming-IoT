@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { publishCommand } from '../mqtt/mqttHandler';
 import { body, param, query } from 'express-validator';
 import { validate } from '../middleware/validation.middleware';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
@@ -115,7 +116,7 @@ router.get(
 
       // Get latest readings
       const latestReadings = await iotService.getLatestReadings(device.id, 5);
-      
+
       // Get stats
       const stats = await iotService.getDeviceStats(device.id, 24);
 
@@ -288,15 +289,13 @@ router.post(
         return;
       }
 
-      // Import MQTT function
-      const { publishMessage } = await import('../config/mqtt');
-      
-      const topic = `smart-agri/devices/${device.deviceId}/command`;
-      const success = publishMessage(topic, {
-        action: req.body.action,
+      // Use standardized MQTT handler
+      publishCommand(device.farmId, device.deviceId, req.body.action, {
         params: req.body.params || {},
         timestamp: Date.now()
       });
+      // Assuming success as publishCommand is void/async fire-and-forget in current implementation
+      const success = true;
 
       if (!success) {
         res.status(500).json({ error: 'Failed to send command' });

@@ -135,25 +135,35 @@ export const register = async (
 };
 
 // Login farmer
-export const login = async (phone: string, password: string): Promise<LoginResult> => {
+export const login = async (identifier: string, password: string): Promise<LoginResult> => {
   try {
-    const normalizedPhone = normalizePhone(phone);
+    let farmer;
 
-    // Find farmer
-    const farmer = await Farmer.findOne({ where: { phone: normalizedPhone } });
+    // Check if identifier looks like an email using simple regex
+    const trimmedIdentifier = identifier.trim();
+
+    if (trimmedIdentifier.includes('@')) {
+      farmer = await Farmer.findOne({ where: { email: trimmedIdentifier } });
+    } else {
+      // Treat as phone number
+      const normalizedPhone = normalizePhone(trimmedIdentifier);
+      farmer = await Farmer.findOne({ where: { phone: normalizedPhone } });
+    }
+
     if (!farmer) {
       return {
         success: false,
-        message: 'Invalid phone number or password.'
+        message: 'Invalid email/phone or password.'
       };
     }
 
     // Verify password
     const isValidPassword = await bcrypt.compare(password, farmer.password);
+
     if (!isValidPassword) {
       return {
         success: false,
-        message: 'Invalid phone number or password.'
+        message: 'Invalid email/phone or password.'
       };
     }
 

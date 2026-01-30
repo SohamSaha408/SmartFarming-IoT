@@ -95,7 +95,7 @@ router.post(
     try {
       const { phone, password, name } = req.body;
       const result = await authService.register(phone, password, name);
-      
+
       if (!result.success) {
         res.status(400).json({ error: result.message });
         return;
@@ -118,20 +118,18 @@ router.post(
 router.post(
   '/login',
   validate([
-    body('phone')
+    body('identifier')
       .notEmpty()
-      .withMessage('Phone number is required')
-      .matches(/^(\+91)?[0-9]{10}$/)
-      .withMessage('Invalid phone number format'),
+      .withMessage('Email or Phone is required'),
     body('password')
       .notEmpty()
       .withMessage('Password is required')
   ]),
   async (req: Request, res: Response) => {
     try {
-      const { phone, password } = req.body;
-      const result = await authService.login(phone, password);
-      
+      const { identifier, password } = req.body;
+      const result = await authService.login(identifier, password);
+
       if (!result.success) {
         res.status(401).json({ error: result.message });
         return;
@@ -161,7 +159,7 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { refreshToken } = req.body;
-      
+
       const decoded = verifyRefreshToken(refreshToken);
       if (!decoded) {
         res.status(401).json({ error: 'Invalid refresh token' });
@@ -189,7 +187,7 @@ router.get(
   async (req: AuthRequest, res: Response) => {
     try {
       const farmer = await authService.getFarmerProfile(req.farmer!.id);
-      
+
       if (!farmer) {
         res.status(404).json({ error: 'Profile not found' });
         return;
@@ -224,14 +222,14 @@ router.put(
   async (req: AuthRequest, res: Response) => {
     try {
       const { name, email, address, profileImage } = req.body;
-      
+
       const farmer = await authService.updateFarmerProfile(req.farmer!.id, {
         name,
         email,
         address,
         profileImage
       });
-      
+
       if (!farmer) {
         res.status(404).json({ error: 'Profile not found' });
         return;
@@ -265,13 +263,13 @@ router.post(
   async (req: AuthRequest, res: Response) => {
     try {
       const { currentPassword, newPassword } = req.body;
-      
+
       const result = await authService.changePassword(
         req.farmer!.id,
         currentPassword,
         newPassword
       );
-      
+
       if (!result.success) {
         res.status(400).json({ error: result.message });
         return;
