@@ -54,7 +54,7 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
-      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-smartagri123}@postgres:5432/smart_agri
+      DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET:-change-this-in-production}
       MQTT_BROKER_URL: mqtt://mqtt:1883
       REDIS_URL: redis://redis:6379
