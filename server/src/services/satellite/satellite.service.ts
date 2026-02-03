@@ -127,7 +127,19 @@ export const getSatelliteImagery = async (
   startDate: Date,
   endDate: Date
 ): Promise<SatelliteImage[]> => {
-  // Return a single mock image
+  let mosdacUrl = '';
+  try {
+    // Try to get real MOSDAC data first
+    // Assuming center is 0,0 for now as polygon center isn't fully implicated in this partial mock
+    // In real app, would fetch polygon center from DB
+    const lat = 20.5937;
+    const lon = 78.9629;
+    mosdacUrl = await import('./mosdac.service').then(m => m.mosdacService.getNDVIMap(lat, lon));
+  } catch (err) {
+    console.warn('MOSDAC fetch failed, using fallback');
+  }
+
+  // Return a single mock image with potentially real MOSDAC URL
   return [{
     dt: Math.floor(endDate.getTime() / 1000),
     type: 'mock',
@@ -137,7 +149,7 @@ export const getSatelliteImagery = async (
     image: {
       truecolor: 'https://placehold.co/600x400/green/white?text=Satellite+View',
       falsecolor: 'https://placehold.co/600x400/red/white?text=False+Color',
-      ndvi: 'https://placehold.co/600x400/00aa00/white?text=NDVI+Map',
+      ndvi: mosdacUrl || 'https://placehold.co/600x400/00aa00/white?text=NDVI+Map',
       evi: 'https://placehold.co/600x400/00aa00/white?text=EVI+Map'
     },
     tile: {
