@@ -51,15 +51,14 @@ services:
       context: ./server
       dockerfile: Dockerfile
     container_name: smart-agri-server
+    env_file:
+      - ./server/.env
     environment:
       NODE_ENV: development
       PORT: 3000
-      DATABASE_URL: ${DATABASE_URL}
-      JWT_SECRET: ${JWT_SECRET:-change-this-in-production}
+      # Specific overrides or variables not in .env can stay here
       MQTT_BROKER_URL: mqtt://mqtt:1883
       REDIS_URL: redis://redis:6379
-      MQTT_USERNAME: ${MQTT_USERNAME}
-      MQTT_PASSWORD: ${MQTT_PASSWORD}
     ports:
       - "3000:3000"
     depends_on:

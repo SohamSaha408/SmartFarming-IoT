@@ -12,6 +12,21 @@ CREATE TABLE IF NOT EXISTS "Users" (
     "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Farmers table (Matches Farmer model)
+CREATE TABLE IF NOT EXISTS "farmers" (
+    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "phone" VARCHAR(15) UNIQUE NOT NULL,
+    "password" VARCHAR(255) NOT NULL,
+    "name" VARCHAR(100),
+    "email" VARCHAR(255),
+    "address" TEXT,
+    "profileImage" VARCHAR(500),
+    "isVerified" BOOLEAN DEFAULT false,
+    "lastLoginAt" TIMESTAMP WITH TIME ZONE,
+    "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Farms table
 CREATE TABLE IF NOT EXISTS "Farms" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
