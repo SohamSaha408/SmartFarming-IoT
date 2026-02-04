@@ -9,7 +9,6 @@ import Crops from './components/crops/Crops'
 import CropHealth from './components/crops/CropHealth'
 import Irrigation from './components/irrigation/Irrigation'
 import Fertilization from './components/fertilization/Fertilization'
-import Devices from './components/devices/Devices'
 import Notifications from './components/notifications/Notifications'
 import Profile from './components/profile/Profile'
 
@@ -35,7 +34,7 @@ function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      
+
       <Route path="/" element={
         <ProtectedRoute>
           <Layout />
@@ -48,11 +47,10 @@ function App() {
         <Route path="crops/:id/health" element={<CropHealth />} />
         <Route path="irrigation" element={<Irrigation />} />
         <Route path="fertilization" element={<Fertilization />} />
-        <Route path="devices" element={<Devices />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="profile" element={<Profile />} />
       </Route>
-      
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

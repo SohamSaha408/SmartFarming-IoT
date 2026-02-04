@@ -17,23 +17,25 @@ const DEVICE_TYPES = [
     { value: 'npk_sensor', label: 'NPK Sensor' },
 ]
 
-export default function AddDeviceModal({ onClose, onDeviceAdded }: Props) {
+export default function AddDeviceModal({ onClose, onDeviceAdded, preselectedFarmId }: Props & { preselectedFarmId?: string }) {
     const [isLoading, setIsLoading] = useState(false)
     const [farms, setFarms] = useState<any[]>([])
     const [formData, setFormData] = useState({
         name: '',
         deviceId: '',
         deviceType: 'soil_sensor',
-        farmId: '',
+        farmId: preselectedFarmId || '',
         latitude: '',
         longitude: '',
     })
 
     useEffect(() => {
-        farmsAPI.getAll()
-            .then(res => setFarms(res.data.farms || []))
-            .catch(err => console.error('Failed to load farms', err))
-    }, [])
+        if (!preselectedFarmId) {
+            farmsAPI.getAll()
+                .then(res => setFarms(res.data.farms || []))
+                .catch(err => console.error('Failed to load farms', err))
+        }
+    }, [preselectedFarmId])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target
@@ -66,8 +68,10 @@ export default function AddDeviceModal({ onClose, onDeviceAdded }: Props) {
         }
     }
 
+    console.log('AddDeviceModal render cycle')
+
     return (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="fixed inset-0 z-[100] overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen px-4">
                 <div className="fixed inset-0 bg-gray-900/50" onClick={onClose} />
 
@@ -132,25 +136,27 @@ export default function AddDeviceModal({ onClose, onDeviceAdded }: Props) {
                             </select>
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Assign to Farm *
-                            </label>
-                            <select
-                                name="farmId"
-                                value={formData.farmId}
-                                onChange={handleChange}
-                                className="input"
-                                required
-                            >
-                                <option value="">Select a farm</option>
-                                {farms.map((farm) => (
-                                    <option key={farm.id} value={farm.id}>
-                                        {farm.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        {!preselectedFarmId && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Assign to Farm *
+                                </label>
+                                <select
+                                    name="farmId"
+                                    value={formData.farmId}
+                                    onChange={handleChange}
+                                    className="input"
+                                    required
+                                >
+                                    <option value="">Select a farm</option>
+                                    {farms.map((farm) => (
+                                        <option key={farm.id} value={farm.id}>
+                                            {farm.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         <div className="grid grid-cols-2 gap-4">
                             <div>

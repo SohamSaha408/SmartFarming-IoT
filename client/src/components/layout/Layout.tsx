@@ -7,7 +7,6 @@ import {
   MapIcon,
   BeakerIcon,
   CloudIcon,
-  CpuChipIcon,
   BellIcon,
   UserCircleIcon,
   Bars3Icon,
@@ -22,7 +21,6 @@ const navigation = [
   { name: 'Crops', href: '/crops', icon: BeakerIcon },
   { name: 'Irrigation', href: '/irrigation', icon: CloudIcon },
   { name: 'Fertilization', href: '/fertilization', icon: BeakerIcon },
-  { name: 'IoT Devices', href: '/devices', icon: CpuChipIcon },
 ]
 
 export default function Layout() {
