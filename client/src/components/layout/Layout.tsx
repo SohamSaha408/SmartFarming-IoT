@@ -18,7 +18,6 @@ import clsx from 'clsx'
 const navigation = [
   { name: 'Dashboard', href: '/', icon: HomeIcon },
   { name: 'My Farms', href: '/farms', icon: MapIcon },
-  { name: 'Crops', href: '/crops', icon: BeakerIcon },
   { name: 'Irrigation', href: '/irrigation', icon: CloudIcon },
   { name: 'Fertilization', href: '/fertilization', icon: BeakerIcon },
 ]

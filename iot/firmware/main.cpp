@@ -42,9 +42,14 @@ const char* MQTT_USER = "mqtt_user";
 const char* MQTT_PASSWORD = "mqtt_password";
 
 // Device Configuration
-String DEVICE_ID = "";  // Will be set from MAC address
-const char* DEVICE_TYPE = "soil_sensor";
-const char* FIRMWARE_VERSION = "1.0.0";
+// FIXED: FARM_ID added so topics match the server's expected format:
+//   farm/{farmId}/sensor/{nodeId}  and  farm/{farmId}/device/{nodeId}/command
+// Set FARM_ID to the exact farmId UUID shown in your dashboard URL.
+String DEVICE_ID = "";              // Auto-set from MAC address — used as nodeId
+const char* FARM_ID       = "YOUR_FARM_ID_UUID"; // ← replace with your farm UUID
+const char* DEVICE_TYPE   = "soil_sensor";
+const char* FIRMWARE_VERSION = "1.1.0";
+const bool  USE_DUMMY_DATA   = true; // Set false when real sensors are wired
 
 // ============== Pin Definitions ==============
 #define SOIL_MOISTURE_PIN 34
@@ -59,10 +64,12 @@ const char* FIRMWARE_VERSION = "1.0.0";
 #define SOIL_MOISTURE_WET 1500   // ADC value when sensor is wet
 
 // ============== MQTT Topics ==============
-String TOPIC_SENSOR_DATA;
-String TOPIC_DEVICE_STATUS;
-String TOPIC_COMMAND;
-String TOPIC_IRRIGATION_ACK;
+// FIXED: Topics now match server's mqttHandler subscription: farm/+/sensor/#
+// Server publishes commands to:                              farm/{farmId}/device/{nodeId}/command
+String TOPIC_SENSOR_DATA;     // farm/{FARM_ID}/sensor/{DEVICE_ID}
+String TOPIC_DEVICE_STATUS;   // farm/{FARM_ID}/status/{DEVICE_ID}
+String TOPIC_COMMAND;         // farm/{FARM_ID}/device/{DEVICE_ID}/command
+String TOPIC_IRRIGATION_ACK;  // farm/{FARM_ID}/device/{DEVICE_ID}/ack
 
 // ============== Global Objects ==============
 WiFiClient wifiClient;
@@ -120,10 +127,13 @@ void setup() {
   Serial.printf("Device ID: %s\n", DEVICE_ID.c_str());
   
   // Setup MQTT topics
-  TOPIC_SENSOR_DATA = "smart-agri/sensors/" + DEVICE_ID + "/data";
-  TOPIC_DEVICE_STATUS = "smart-agri/devices/" + DEVICE_ID + "/status";
-  TOPIC_COMMAND = "smart-agri/irrigation/" + DEVICE_ID + "/command";
-  TOPIC_IRRIGATION_ACK = "smart-agri/irrigation/" + DEVICE_ID + "/ack";
+  // FIXED: Was using "smart-agri/sensors/{id}/data" — server never received it.
+  // Now aligned with server subscription: farm/+/sensor/# and farm/+/status/#
+  // Command topic matches publishCommand(): farm/{farmId}/device/{nodeId}/command
+  TOPIC_SENSOR_DATA    = "farm/" + String(FARM_ID) + "/sensor/" + DEVICE_ID;
+  TOPIC_DEVICE_STATUS  = "farm/" + String(FARM_ID) + "/status/" + DEVICE_ID;
+  TOPIC_COMMAND        = "farm/" + String(FARM_ID) + "/device/" + DEVICE_ID + "/command";
+  TOPIC_IRRIGATION_ACK = "farm/" + String(FARM_ID) + "/device/" + DEVICE_ID + "/ack";
   
   // Initialize pins
   pinMode(RELAY_PUMP_PIN, OUTPUT);
@@ -377,11 +387,23 @@ float readAirHumidity() {
 // ============== Data Publishing ==============
 void publishSensorData() {
   Serial.println("Reading sensors...");
-  
-  float soilMoisture = readSoilMoisture();
-  float soilTemp = readSoilTemperature();
-  float airTemp = readAirTemperature();
-  float airHumidity = readAirHumidity();
+
+  float soilMoisture, soilTemp, airTemp, airHumidity;
+
+  if (USE_DUMMY_DATA) {
+    // Generate dummy data
+    soilMoisture = random(200, 800) / 10.0;  // 20.0% to 80.0%
+    soilTemp = random(200, 300) / 10.0;     // 20.0C to 30.0C
+    airTemp = random(250, 350) / 10.0;      // 25.0C to 35.0C
+    airHumidity = random(400, 700) / 10.0;  // 40.0% to 70.0%
+    Serial.println("Using DUMMY DATA");
+  } else {
+    // Read real sensors
+    soilMoisture = readSoilMoisture();
+    soilTemp = readSoilTemperature();
+    airTemp = readAirTemperature();
+    airHumidity = readAirHumidity();
+  }
   
   Serial.printf("Soil Moisture: %.1f%%\n", soilMoisture);
   Serial.printf("Soil Temperature: %.1f°C\n", soilTemp);
@@ -389,21 +411,24 @@ void publishSensorData() {
   Serial.printf("Air Humidity: %.1f%%\n", airHumidity);
   
   // Create JSON payload
+  // FIXED: Field names now match server's SensorPayload interface in sensor.service.ts
+  // Keys: soilMoisture, soilTemperature, airTemperature, airHumidity (not camelCase variants)
   StaticJsonDocument<512> doc;
-  doc["deviceId"] = DEVICE_ID;
+  doc["deviceId"]  = DEVICE_ID;
+  doc["farmId"]    = FARM_ID;
   doc["timestamp"] = millis();
   
   if (soilMoisture >= 0) {
-    doc["soilMoisture"] = round(soilMoisture * 10) / 10.0;
+    doc["soilMoisture"]    = round(soilMoisture * 10) / 10.0;
   }
   if (soilTemp > -900) {
     doc["soilTemperature"] = round(soilTemp * 10) / 10.0;
   }
   if (airTemp > -900) {
-    doc["airTemperature"] = round(airTemp * 10) / 10.0;
+    doc["airTemperature"]  = round(airTemp * 10) / 10.0;
   }
   if (airHumidity > -900) {
-    doc["airHumidity"] = round(airHumidity * 10) / 10.0;
+    doc["airHumidity"]     = round(airHumidity * 10) / 10.0;
   }
   
   char buffer[512];

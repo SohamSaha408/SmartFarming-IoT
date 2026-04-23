@@ -6,7 +6,10 @@ dotenv.config();
 const isProduction = process.env.NODE_ENV === 'production';
 const dbUrl = process.env.DATABASE_URL;
 
-const dialectOptions = isProduction && process.env.DB_SSL !== 'false'
+const isRemoteDb = process.env.DATABASE_URL?.includes('neon.tech');
+const useSsl = isProduction || isRemoteDb || process.env.DB_SSL === 'true';
+
+const dialectOptions = useSsl
   ? {
     ssl: {
       require: true,

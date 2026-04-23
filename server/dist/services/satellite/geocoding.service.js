@@ -32,7 +32,12 @@ const reverseGeocode = async (lat, lon) => {
         };
     }
     catch (error) {
-        console.error('Reverse geocoding error:', error);
+        if (error.response?.status === 402 || error.response?.status === 429) {
+            console.warn('Bhuvan API limit reached, using fallback');
+        }
+        else {
+            console.error('Reverse geocoding error:', error.message || error);
+        }
         // Fallback: Try OpenStreetMap Nominatim
         try {
             const osmResponse = await axios_1.default.get(`https://nominatim.openstreetmap.org/reverse`, {

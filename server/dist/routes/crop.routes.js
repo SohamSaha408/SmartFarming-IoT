@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const express_validator_1 = require("express-validator");
@@ -6,6 +39,8 @@ const validation_middleware_1 = require("../middleware/validation.middleware");
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const models_1 = require("../models");
 const sequelize_1 = require("sequelize");
+const satellite_service_1 = require("../services/satellite/satellite.service");
+const agronomyService = __importStar(require("../services/agronomy.service"));
 const router = (0, express_1.Router)();
 router.use(auth_middleware_1.authenticate);
 // Get crop rankings (healthiest and weakest)
@@ -100,13 +135,40 @@ router.get('/farm/:farmId', (0, validation_middleware_1.validate)([
                 {
                     model: models_1.CropHealth,
                     as: 'healthRecords',
-                    limit: 1,
+                    limit: 30,
                     order: [['recordedAt', 'DESC']]
                 }
             ],
             order: [['createdAt', 'DESC']]
         });
-        res.json({ crops });
+        const cropsWithAgronomy = crops.map(crop => {
+            let cumulativeGDD = 0;
+            let diseaseRisk = null;
+            let yieldPotential = null;
+            let nitrogenReq = null;
+            const hr = crop.healthRecords || [];
+            if (hr.length > 0) {
+                for (const record of hr) {
+                    if (record.temperature != null) {
+                        cumulativeGDD += agronomyService.calculateGDD(record.temperature);
+                    }
+                }
+                const latest = hr[0];
+                if (latest.temperature != null && latest.humidity != null) {
+                    diseaseRisk = agronomyService.calculateDiseaseRisk(latest.temperature, latest.humidity);
+                }
+                if (latest.ndviValue != null) {
+                    const ndvi = typeof latest.ndviValue === 'number' ? latest.ndviValue : parseFloat(latest.ndviValue);
+                    yieldPotential = agronomyService.calculateYieldPotential(ndvi);
+                    nitrogenReq = agronomyService.calculateNitrogenRequirement(ndvi);
+                }
+            }
+            return {
+                ...crop.toJSON(),
+                agronomy: { cumulativeGDD, diseaseRisk, yieldPotential, nitrogenReq }
+            };
+        });
+        res.json({ crops: cropsWithAgronomy });
     }
     catch (error) {
         console.error('Get crops error:', error);
@@ -160,6 +222,36 @@ router.post('/farm/:farmId', (0, validation_middleware_1.validate)([
             areaHectares: req.body.areaHectares,
             status: 'active'
         });
+        // --- AUTO-GENERATE 30 DAYS OF NDVI HISTORY ---
+        const today = new Date();
+        let currentNdvi = 0.5 + Math.random() * 0.2; // Start around 0.5-0.7
+        const bulkRecords = [];
+        for (let i = 29; i >= 0; i--) {
+            const recordDate = new Date(today);
+            recordDate.setDate(today.getDate() - i);
+            currentNdvi += (Math.random() - 0.5) * 0.05;
+            if (currentNdvi > 0.95)
+                currentNdvi = 0.95;
+            if (currentNdvi < 0.2)
+                currentNdvi = 0.2;
+            const healthScore = Math.round(currentNdvi * 100);
+            const healthStatus = (0, satellite_service_1.getHealthStatus)(healthScore);
+            const moistureLevel = 40 + Math.random() * 40;
+            const temperature = 20 + Math.random() * 10;
+            bulkRecords.push({
+                cropId: crop.id,
+                recordedAt: recordDate,
+                ndviValue: currentNdvi,
+                healthScore,
+                healthStatus,
+                moistureLevel,
+                temperature,
+                dataSource: 'auto-generated',
+                recommendations: (0, satellite_service_1.generateRecommendations)(healthScore, currentNdvi, moistureLevel, temperature)
+            });
+        }
+        await models_1.CropHealth.bulkCreate(bulkRecords);
+        // ---------------------------------------------
         res.status(201).json({
             message: 'Crop added successfully',
             crop
@@ -300,7 +392,38 @@ router.get('/:id/health', (0, validation_middleware_1.validate)([
             order: [['recordedAt', 'DESC']],
             limit
         });
-        res.json({ healthRecords });
+        let cumulativeGDD = 0;
+        let diseaseRisk = null;
+        let yieldPotential = null;
+        let nitrogenReq = null;
+        if (healthRecords && healthRecords.length > 0) {
+            // Calculate cumulative GDD over this returned period
+            for (const record of healthRecords) {
+                if (record.temperature != null) {
+                    cumulativeGDD += agronomyService.calculateGDD(record.temperature);
+                }
+            }
+            // Calculate current disease risk using the latest record
+            const latest = healthRecords[0];
+            if (latest.temperature != null && latest.humidity != null) {
+                diseaseRisk = agronomyService.calculateDiseaseRisk(latest.temperature, latest.humidity);
+            }
+            // Calculate NDVI-driven insights
+            if (latest.ndviValue != null) {
+                const ndvi = typeof latest.ndviValue === 'number' ? latest.ndviValue : parseFloat(latest.ndviValue);
+                yieldPotential = agronomyService.calculateYieldPotential(ndvi);
+                nitrogenReq = agronomyService.calculateNitrogenRequirement(ndvi);
+            }
+        }
+        res.json({
+            healthRecords,
+            agronomy: {
+                cumulativeGDD,
+                diseaseRisk,
+                yieldPotential,
+                nitrogenReq
+            }
+        });
     }
     catch (error) {
         console.error('Get health history error:', error);

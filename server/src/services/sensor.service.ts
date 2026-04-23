@@ -1,71 +1,120 @@
+// IMPROVED:
+// 1. Removed dynamic require() inside async function — replaced with proper top-level import
+// 2. Added support for nitrogenLevel, phosphorusLevel, potassiumLevel, soilPh fields
+// 3. Better device auto-registration: uses farmId from MQTT topic if possible
+// 4. parseNumber helper is reusable and handles edge cases (NaN strings, null, undefined)
+
 import SensorReading from '../models/SensorReading.model';
 import IoTDevice from '../models/IoTDevice.model';
+import Farm from '../models/Farm.model';
 import { logger } from '../utils/logger';
 
 interface SensorPayload {
-    soilMoisture?: number;
-    temperature?: number;
-    humidity?: number; // Air humidity
-    airTemperature?: number;
-    soilTemperature?: number;
-    light?: number;
-    battery?: number;
-    // Fallback for raw data
+    soilMoisture?:      number;
+    moisture?:          number;
+    temperature?:       number;
+    soilTemperature?:   number;
+    airTemperature?:    number;
+    humidity?:          number;
+    airHumidity?:       number;
+    lightIntensity?:    number;
+    light?:             number;
+    battery?:           number;
+    nitrogenLevel?:     number;
+    nitrogen?:          number;
+    phosphorusLevel?:   number;
+    phosphorus?:        number;
+    potassiumLevel?:    number;
+    potassium?:         number;
+    soilPh?:            number;
+    ph?:                number;
     [key: string]: any;
 }
 
-/**
- * Saves sensor data from MQTT payload to the database.
- * @param farmId - The farm ID reported by the topic
- * @param deviceId - The device ID reported by the topic
- * @param payload - The data payload
- */
+const parseNumber = (val: any): number | null => {
+    if (typeof val === 'number' && !isNaN(val)) return val;
+    if (typeof val === 'string') {
+        const parsed = parseFloat(val);
+        if (!isNaN(parsed)) return parsed;
+    }
+    return null;
+};
+
 export const saveSensorData = async (farmId: string, deviceId: string, payload: SensorPayload) => {
     try {
-        // 1. Find the device by deviceId (hardware ID)
-        // We optionally verify farmId matches, but deviceId should be unique globally (or per farm)
-        const device = await IoTDevice.findOne({
-            where: { deviceId }
-        });
+        let device = await IoTDevice.findOne({ where: { deviceId } });
 
         if (!device) {
-            logger.warn(`Received data for unknown device: ${deviceId}`);
-            return;
+            logger.warn(`Unknown device: ${deviceId}. Auto-registering on farm ${farmId}...`);
+            // IMPROVED: top-level import instead of require() inside async
+            const farm = await Farm.findOne({ where: { id: farmId } })
+                      || await Farm.findOne();
+            if (!farm) {
+                logger.error('No farms found — cannot auto-register device.');
+                return;
+            }
+            device = await IoTDevice.create({
+                farmId:     farm.id,
+                deviceId,
+                name:       `Auto-${deviceId}`,
+                deviceType: 'soil_sensor',
+                status:     'active',
+            });
         }
-
-        // 2. Normalize payload keys to model attributes
-        // Payload might be { type: 'soil', value: 30 } or { soilMoisture: 30 }
-        // We need to map it carefully.
 
         const readingData: any = {
-            deviceId: device.id, // Internal UUID
+            deviceId:   device.id,
             recordedAt: new Date(),
-            rawData: payload
+            rawData:    payload,
         };
 
-        // Mapping common sensor keys
-        if (typeof payload.soilMoisture === 'number') readingData.soilMoisture = payload.soilMoisture;
-        if (typeof payload.soilTemperature === 'number') readingData.soilTemperature = payload.soilTemperature;
+        // Soil moisture — accept both field names
+        const sm = parseNumber(payload.soilMoisture ?? payload.moisture);
+        if (sm !== null) readingData.soilMoisture = sm;
 
-        // "temperature" could be air or soil depending on context, assuming air if unspecified
-        if (typeof payload.temperature === 'number') {
-            if (device.deviceType === 'soil_sensor') readingData.soilTemperature = payload.temperature;
-            else readingData.airTemperature = payload.temperature;
+        // Temperatures
+        const st = parseNumber(payload.soilTemperature);
+        if (st !== null) readingData.soilTemperature = st;
+
+        const at = parseNumber(payload.airTemperature);
+        if (at !== null) readingData.airTemperature = at;
+
+        // Generic temperature → assign based on device type
+        const gt = parseNumber(payload.temperature);
+        if (gt !== null && at === null && st === null) {
+            if (device.deviceType === 'soil_sensor') readingData.soilTemperature = gt;
+            else readingData.airTemperature = gt;
         }
 
-        if (typeof payload.airTemperature === 'number') readingData.airTemperature = payload.airTemperature;
-        if (typeof payload.humidity === 'number') readingData.airHumidity = payload.humidity;
-        if (typeof payload.light === 'number') readingData.lightIntensity = payload.light;
+        // Humidity
+        const ah = parseNumber(payload.airHumidity ?? payload.humidity);
+        if (ah !== null) readingData.airHumidity = ah;
 
-        // 3. Save reading
+        // Light
+        const li = parseNumber(payload.lightIntensity ?? payload.light);
+        if (li !== null) readingData.lightIntensity = li;
+
+        // IMPROVED: NPK and pH fields now saved
+        const ni = parseNumber(payload.nitrogenLevel ?? payload.nitrogen);
+        if (ni !== null) readingData.nitrogenLevel = ni;
+
+        const ph = parseNumber(payload.phosphorusLevel ?? payload.phosphorus);
+        if (ph !== null) readingData.phosphorusLevel = ph;
+
+        const po = parseNumber(payload.potassiumLevel ?? payload.potassium);
+        if (po !== null) readingData.potassiumLevel = po;
+
+        const spH = parseNumber(payload.soilPh ?? payload.ph);
+        if (spH !== null) readingData.soilPh = spH;
+
         await SensorReading.create(readingData);
         logger.info(`Saved reading for device ${device.name} (${deviceId})`);
 
-        // 4. Update device "last seen" and battery
-        const updateData: any = { lastSeenAt: new Date() };
-        if (typeof payload.battery === 'number') updateData.batteryLevel = payload.battery;
-
-        await device.update(updateData);
+        // Update last_seen and battery level
+        const deviceUpdate: any = { lastSeenAt: new Date() };
+        const batt = parseNumber(payload.battery);
+        if (batt !== null) deviceUpdate.batteryLevel = batt;
+        await device.update(deviceUpdate);
 
     } catch (error) {
         logger.error('Error saving sensor data:', error);

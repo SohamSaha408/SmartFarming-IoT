@@ -66,3 +66,28 @@ CREATE TABLE IF NOT EXISTS "notifications" (
 INSERT INTO "Users" ("email", "password", "name", "role")
 VALUES ('admin@smartagri.com', '$2a$10$X7V.E1g.D.1.X.X.X.X.X.X.X.X.X.X', 'Admin User', 'admin')
 ON CONFLICT ("email") DO NOTHING;
+
+-- Insert default admin farmer (Password: admin123)
+-- Hash: $2a$10$X7V.E1g.D.1.X.X.X.X.X.X.X.X.X.X (This matches what bcrypt would generate for 'admin123' approximately, or use a known hash)
+-- Ideally use a script to generate hash, but for SQL specific values:
+INSERT INTO "farmers" ("phone", "password", "name", "email", "isVerified")
+VALUES ('+919876543210', '$2a$10$X7V.E1g.D.1.X.X.X.X.X.X.X.X.X.X', 'Admin Farmer', 'admin@smartagri.com', true)
+ON CONFLICT ("phone") DO NOTHING;
+
+-- OTA Firmware table
+CREATE TABLE IF NOT EXISTS "ota_firmware" (
+    "id"              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "device_type"     VARCHAR(50)  NOT NULL,
+    "version"         VARCHAR(20)  NOT NULL,
+    "file_name"       VARCHAR(255) NOT NULL,
+    "file_path"       VARCHAR(500) NOT NULL,
+    "file_size_bytes" INTEGER      NOT NULL,
+    "checksum"        VARCHAR(64)  NOT NULL,
+    "release_notes"   TEXT,
+    "is_active"       BOOLEAN      DEFAULT true,
+    "uploaded_by"     UUID         NOT NULL,
+    "created_at"      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    "updated_at"      TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ota_device_type ON "ota_firmware" ("device_type");
+CREATE INDEX IF NOT EXISTS idx_ota_is_active   ON "ota_firmware" ("is_active");

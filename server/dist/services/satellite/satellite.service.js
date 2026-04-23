@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.updateCropHealth = exports.generateRecommendations = exports.getHealthStatus = exports.calculateHealthScore = exports.getUVIndex = exports.getSoilData = exports.getWeatherForecast = exports.getCurrentWeather = exports.getSatelliteImagery = exports.getNDVIData = exports.deletePolygon = exports.getPolygon = exports.createPolygon = void 0;
 const axios_1 = __importDefault(require("axios"));
 const models_1 = require("../../models");
+const agromonitoring_service_1 = require("./agromonitoring.service");
+const logger_1 = require("../../utils/logger");
 const OPEN_METEO_URL = 'https://api.open-meteo.com/v1/forecast';
 // MOCK: Create a polygon for a farm (Always returns success)
 const createPolygon = async (farm, boundary) => {
@@ -33,67 +35,44 @@ const deletePolygon = async (polygonId) => {
     return true;
 };
 exports.deletePolygon = deletePolygon;
-// MOCK: Get NDVI data for a polygon
-const getNDVIData = async (polygonId, startDate, endDate) => {
-    // Generate realistic mock data
-    const data = [];
-    const days = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-    // Generate a data point every few days
-    for (let i = 0; i <= days; i += 3) {
-        const currentDate = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
-        const mockNdviMean = 0.4 + Math.random() * 0.4; // 0.4 to 0.8 (Moderate to Healthy)
-        data.push({
-            dt: Math.floor(currentDate.getTime() / 1000),
-            source: 'Mock Satellite',
-            dc: 0,
-            cl: 0,
-            data: {
-                std: 0.1,
-                p75: mockNdviMean + 0.05,
-                min: mockNdviMean - 0.1,
-                max: mockNdviMean + 0.1,
-                median: mockNdviMean,
-                p25: mockNdviMean - 0.05,
-                num: 100,
-                mean: mockNdviMean
-            }
-        });
+// REAL: Get NDVI data for a polygon using Agromonitoring
+const getNDVIData = async (polygonId, startDate, endDate, lat = 0, lon = 0, farmId = '') => {
+    // FIX 1: Old gate only caught 'mock-' prefix. 'poly-{uuid}' (set by farm.routes)
+    // was not caught, so a fake ID was sent to the API and silently fell back to mock.
+    // New rule: if the API key is missing OR the polygonId is not a raw API-issued ID
+    // (i.e. it contains our constructed prefixes 'mock-' or 'poly-'), resolve a real
+    // polygon via getOrCreatePolygon() which deduplicates against the API.
+    const needsRealPoly = !polygonId ||
+        polygonId.startsWith('mock-') ||
+        polygonId.startsWith('poly-');
+    let polyId = polygonId;
+    if (agromonitoring_service_1.agromonitoringService.isConfigured() && needsRealPoly && lat !== 0 && lon !== 0) {
+        const resolved = await agromonitoring_service_1.agromonitoringService.getOrCreatePolygon(farmId || polygonId, lat, lon);
+        if (resolved)
+            polyId = resolved;
+    }
+    // FIX 2: getNDVI() now calls getStatistics() internally and returns records
+    // with a resolved numeric ndviMean field — no more URL-string type confusion.
+    let data = await agromonitoring_service_1.agromonitoringService.getNDVI(polyId, startDate, endDate);
+    // Fallback: API key missing, coordinates zero, or API returned nothing
+    if (!data || data.length === 0) {
+        logger_1.logger.debug('[Satellite] Using mock NDVI fallback');
+        const mockNdvi = parseFloat((0.55 + Math.random() * 0.30).toFixed(3)); // 0.55–0.85
+        data = [{
+                dt: Math.floor(endDate.getTime() / 1000),
+                ndviMean: mockNdvi, // numeric — consistent with real path
+                stats: { ndvi: mockNdvi }, // kept for legacy callers
+                data: { mean: mockNdvi },
+                image: { ndvi: 'https://placehold.co/600x400/10b981/ffffff?text=Mock+NDVI+Map' },
+                _isMock: true,
+            }];
     }
     return data;
 };
 exports.getNDVIData = getNDVIData;
-// MOCK: Get satellite imagery for a polygon
-const getSatelliteImagery = async (polygonId, startDate, endDate) => {
-    // Return a single mock image
-    return [{
-            dt: Math.floor(endDate.getTime() / 1000),
-            type: 'mock',
-            dc: 0,
-            cl: 0,
-            sun: { azimuth: 100, elevation: 50 },
-            image: {
-                truecolor: 'https://placehold.co/600x400/green/white?text=Satellite+View',
-                falsecolor: 'https://placehold.co/600x400/red/white?text=False+Color',
-                ndvi: 'https://placehold.co/600x400/00aa00/white?text=NDVI+Map',
-                evi: 'https://placehold.co/600x400/00aa00/white?text=EVI+Map'
-            },
-            tile: {
-                truecolor: '',
-                falsecolor: '',
-                ndvi: '',
-                evi: ''
-            },
-            stats: {
-                ndvi: '0.65',
-                evi: '0.45'
-            },
-            data: {
-                truecolor: '',
-                falsecolor: '',
-                ndvi: '',
-                evi: ''
-            }
-        }];
+// REAL: Get satellite imagery — now threads farmId + coords through to getNDVIData
+const getSatelliteImagery = async (polygonId, startDate, endDate, lat = 0, lon = 0, farmId = '') => {
+    return await (0, exports.getNDVIData)(polygonId, startDate, endDate, lat, lon, farmId);
 };
 exports.getSatelliteImagery = getSatelliteImagery;
 // REAL: Get current weather for a location using Open-Meteo
@@ -230,50 +209,58 @@ const generateRecommendations = (healthScore, ndvi, moisture, temperature) => {
     return recommendations;
 };
 exports.generateRecommendations = generateRecommendations;
-// Fetch and store crop health data (Uses Mocks + Open-Meteo)
+// Fetch and store crop health data
 const updateCropHealth = async (crop, polygonId) => {
     try {
         const endDate = new Date();
-        const startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000); // Last 7 days
-        // Get Mock NDVI data
-        const ndviData = await (0, exports.getNDVIData)(polygonId, startDate, endDate);
-        if (ndviData.length === 0) {
-            return null;
-        }
-        // Get latest NDVI
-        const latestNDVI = ndviData[ndviData.length - 1];
-        const ndviValue = latestNDVI.data.mean;
-        // Get Real Weather data
+        const startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000);
         const farm = await models_1.Farm.findByPk(crop.farmId);
-        let weatherData = null;
+        let lat = 0, lon = 0, weatherData = null;
         if (farm) {
-            weatherData = await (0, exports.getCurrentWeather)(parseFloat(farm.latitude.toString()), parseFloat(farm.longitude.toString()));
+            lat = parseFloat(farm.latitude.toString());
+            lon = parseFloat(farm.longitude.toString());
+            weatherData = await (0, exports.getCurrentWeather)(lat, lon);
         }
-        // Calculate health metrics
+        // Pass farmId + coords so real polygon resolution works
+        const ndviData = await (0, exports.getNDVIData)(polygonId, startDate, endDate, lat, lon, crop.farmId);
+        if (!ndviData || ndviData.length === 0)
+            return null;
+        const latestImage = ndviData[ndviData.length - 1];
+        const isMock = latestImage._isMock === true;
+        // FIX 3: ndviMean is now a guaranteed number on both real and mock paths.
+        // Old code checked typeof stats?.ndvi === 'number' which always failed for real
+        // API responses (stats.ndvi is a URL string there), silently defaulting to 0.65.
+        const ndviValue = typeof latestImage.ndviMean === 'number'
+            ? latestImage.ndviMean
+            : typeof latestImage.data?.mean === 'number'
+                ? latestImage.data.mean
+                : 0.65;
         const healthScore = (0, exports.calculateHealthScore)(ndviValue);
         const healthStatus = (0, exports.getHealthStatus)(healthScore);
-        const temperature = weatherData?.main?.temp || null;
-        const humidity = weatherData?.main?.humidity || null;
-        const moisture = null; // Would come from sensors
-        const recommendations = (0, exports.generateRecommendations)(healthScore, ndviValue, moisture, temperature);
-        // Get Mock satellite image URL
-        const imagery = await (0, exports.getSatelliteImagery)(polygonId, startDate, endDate);
-        const satelliteImageUrl = imagery.length > 0 ? imagery[imagery.length - 1].image.ndvi : null;
-        // Create health record
+        const temperature = weatherData?.main?.temp ?? null;
+        const humidity = weatherData?.main?.humidity ?? null;
+        const recommendations = (0, exports.generateRecommendations)(healthScore, ndviValue, null, temperature);
+        const satelliteImageUrl = latestImage.image?.ndvi || latestImage.image?.truecolor || null;
+        // FIX 4: dataSource now accurately reflects whether real satellite data was used.
+        const dataSource = isMock
+            ? 'mock'
+            : agromonitoring_service_1.agromonitoringService.isConfigured()
+                ? 'agromonitoring'
+                : 'mock';
         const healthRecord = await models_1.CropHealth.create({
             cropId: crop.id,
             recordedAt: new Date(),
             ndviValue,
             healthScore,
             healthStatus,
-            moistureLevel: moisture,
+            moistureLevel: null,
             temperature,
             humidity,
             rainfallMm: null,
             soilMoisture: null,
             recommendations,
             satelliteImageUrl,
-            dataSource: 'mock-agromonitoring'
+            dataSource,
         });
         return healthRecord;
     }

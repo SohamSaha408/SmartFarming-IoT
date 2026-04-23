@@ -1,12 +1,14 @@
 #ifndef SENSORS_H
 #define SENSORS_H
 
-#include "DHT.h"
+#include <OneWire.h>
+#include <DallasTemperature.h>
 #include <Wire.h>
 #include <BH1750.h>
 #include "config.h"
 
-DHT dht(PIN_DHT, DHT22);
+OneWire oneWire(PIN_TEMP);
+DallasTemperature sensors(&oneWire);
 BH1750 lightMeter;
 
 struct SensorData {
@@ -18,7 +20,7 @@ struct SensorData {
 
 void setupSensors() {
   Serial.println("Initializing Sensors...");
-  dht.begin();
+  sensors.begin();
   Wire.begin(PIN_SDA, PIN_SCL);
   
   // Try to initialize BH1750, but don't hang if missing
@@ -43,16 +45,16 @@ SensorData readSensors() {
   data.soilMoisture = map(rawMoisture, 3500, 1500, 0, 100);
   data.soilMoisture = constrain(data.soilMoisture, 0, 100);
 
-  // Read DHT
-  data.temperature = dht.readTemperature();
-  data.humidity = dht.readHumidity();
+  // Read DS18B20
+  sensors.requestTemperatures(); 
+  data.temperature = sensors.getTempCByIndex(0);
+  data.humidity = 0; // DS18B20 doesn't read humidity
 
   // Read Light
   data.lux = lightMeter.readLightLevel();
   
   // Validate NaN
   if (isnan(data.temperature)) data.temperature = 0;
-  if (isnan(data.humidity)) data.humidity = 0;
   
   return data;
 }

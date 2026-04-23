@@ -5,17 +5,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createSystemNotification = exports.cleanupOldNotifications = exports.markAllAsRead = exports.markAsRead = exports.getNotifications = exports.createCriticalAlert = exports.createNotification = void 0;
 const twilio_1 = __importDefault(require("twilio"));
-const mail_1 = __importDefault(require("@sendgrid/mail"));
+const nodemailer_1 = __importDefault(require("nodemailer"));
 const models_1 = require("../../models");
 const sequelize_1 = require("sequelize");
 // Initialize Twilio
 const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
     ? (0, twilio_1.default)(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
     : null;
-// Initialize SendGrid
-if (process.env.SENDGRID_API_KEY) {
-    mail_1.default.setApiKey(process.env.SENDGRID_API_KEY);
-}
+// Initialize Nodemailer
+const transporter = nodemailer_1.default.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
 // Send SMS notification
 const sendSMS = async (phone, message) => {
     try {
@@ -38,16 +42,13 @@ const sendSMS = async (phone, message) => {
 // Send Email notification
 const sendEmail = async (email, subject, content) => {
     try {
-        if (!process.env.SENDGRID_API_KEY || process.env.NODE_ENV !== 'production') {
-            console.log(`[DEV EMAIL] To: ${email} - Subject: ${subject}`);
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+            console.log(`[DEV EMAIL LOGGING] Credentials not found. To: ${email} - Subject: ${subject}`);
             return true;
         }
-        await mail_1.default.send({
+        await transporter.sendMail({
+            from: `"Smart Agri IoT" <${process.env.EMAIL_USER}>`,
             to: email,
-            from: {
-                email: process.env.SENDGRID_FROM_EMAIL || 'noreply@smartagri.com',
-                name: process.env.SENDGRID_FROM_NAME || 'Smart Agri IoT'
-            },
             subject,
             text: content,
             html: `

@@ -1,5 +1,5 @@
 import twilio from 'twilio';
-import sgMail from '@sendgrid/mail';
+import nodemailer from 'nodemailer';
 import { Notification, Farmer } from '../../models';
 import { Op } from 'sequelize';
 import type { NotificationChannel } from '../../models/Notification.model';
@@ -9,10 +9,14 @@ const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_T
   ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
   : null;
 
-// Initialize SendGrid
-if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-}
+// Initialize Nodemailer
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
 
 interface CreateNotificationParams {
   farmerId: string;
@@ -55,17 +59,14 @@ const sendEmail = async (
   content: string
 ): Promise<boolean> => {
   try {
-    if (!process.env.SENDGRID_API_KEY || process.env.NODE_ENV !== 'production') {
-      console.log(`[DEV EMAIL] To: ${email} - Subject: ${subject}`);
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.log(`[DEV EMAIL LOGGING] Credentials not found. To: ${email} - Subject: ${subject}`);
       return true;
     }
 
-    await sgMail.send({
+    await transporter.sendMail({
+      from: `"Smart Agri IoT" <${process.env.EMAIL_USER}>`,
       to: email,
-      from: {
-        email: process.env.SENDGRID_FROM_EMAIL || 'noreply@smartagri.com',
-        name: process.env.SENDGRID_FROM_NAME || 'Smart Agri IoT'
-      },
       subject,
       text: content,
       html: `

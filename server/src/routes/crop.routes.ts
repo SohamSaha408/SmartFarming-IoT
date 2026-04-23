@@ -4,7 +4,8 @@ import { validate } from '../middleware/validation.middleware';
 import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { Farm, Crop, CropHealth } from '../models';
 import { Op } from 'sequelize';
-import { updateCropHealth, calculateHealthScore, getHealthStatus } from '../services/satellite/satellite.service';
+import { updateCropHealth, calculateHealthScore, getHealthStatus, generateRecommendations } from '../services/satellite/satellite.service';
+import * as agronomyService from '../services/agronomy.service';
 
 const router = Router();
 
@@ -118,14 +119,44 @@ router.get(
           {
             model: CropHealth,
             as: 'healthRecords',
-            limit: 1,
+            limit: 30,
             order: [['recordedAt', 'DESC']]
           }
         ],
         order: [['createdAt', 'DESC']]
       });
 
-      res.json({ crops });
+      const cropsWithAgronomy = crops.map(crop => {
+        let cumulativeGDD = 0;
+        let diseaseRisk = null;
+        let yieldPotential = null;
+        let nitrogenReq = null;
+        const hr = (crop as any).healthRecords || [];
+        
+        if (hr.length > 0) {
+            for (const record of hr) {
+                if (record.temperature != null) {
+                    cumulativeGDD += agronomyService.calculateGDD(record.temperature);
+                }
+            }
+            const latest = hr[0];
+            if (latest.temperature != null && latest.humidity != null) {
+                diseaseRisk = agronomyService.calculateDiseaseRisk(latest.temperature, latest.humidity);
+            }
+            if (latest.ndviValue != null) {
+                const ndvi = typeof latest.ndviValue === 'number' ? latest.ndviValue : parseFloat(latest.ndviValue as any);
+                yieldPotential = agronomyService.calculateYieldPotential(ndvi);
+                nitrogenReq = agronomyService.calculateNitrogenRequirement(ndvi);
+            }
+        }
+        
+        return {
+            ...crop.toJSON(),
+            agronomy: { cumulativeGDD, diseaseRisk, yieldPotential, nitrogenReq }
+        };
+      });
+
+      res.json({ crops: cropsWithAgronomy });
     } catch (error) {
       console.error('Get crops error:', error);
       res.status(500).json({ error: 'Failed to fetch crops' });
@@ -185,6 +216,40 @@ router.post(
         areaHectares: req.body.areaHectares,
         status: 'active'
       });
+
+      // --- AUTO-GENERATE 30 DAYS OF NDVI HISTORY ---
+      const today = new Date();
+      let currentNdvi = 0.5 + Math.random() * 0.2; // Start around 0.5-0.7
+      const bulkRecords = [];
+
+      for (let i = 29; i >= 0; i--) {
+        const recordDate = new Date(today);
+        recordDate.setDate(today.getDate() - i);
+        
+        currentNdvi += (Math.random() - 0.5) * 0.05;
+        if (currentNdvi > 0.95) currentNdvi = 0.95;
+        if (currentNdvi < 0.2) currentNdvi = 0.2;
+        
+        const healthScore = Math.round(currentNdvi * 100);
+        const healthStatus = getHealthStatus(healthScore);
+        const moistureLevel = 40 + Math.random() * 40;
+        const temperature = 20 + Math.random() * 10;
+
+        bulkRecords.push({
+          cropId: crop.id,
+          recordedAt: recordDate,
+          ndviValue: currentNdvi,
+          healthScore,
+          healthStatus,
+          moistureLevel,
+          temperature,
+          dataSource: 'auto-generated',
+          recommendations: generateRecommendations(healthScore, currentNdvi, moistureLevel, temperature)
+        });
+      }
+      
+      await CropHealth.bulkCreate(bulkRecords);
+      // ---------------------------------------------
 
       res.status(201).json({
         message: 'Crop added successfully',
@@ -355,14 +420,47 @@ router.get(
         limit
       });
 
-      res.json({ healthRecords });
+      let cumulativeGDD = 0;
+      let diseaseRisk = null;
+      let yieldPotential = null;
+      let nitrogenReq = null;
+
+      if (healthRecords && healthRecords.length > 0) {
+        // Calculate cumulative GDD over this returned period
+        for (const record of healthRecords) {
+          if (record.temperature != null) {
+            cumulativeGDD += agronomyService.calculateGDD(record.temperature);
+          }
+        }
+        
+        // Calculate current disease risk using the latest record
+        const latest = healthRecords[0];
+        if (latest.temperature != null && latest.humidity != null) {
+          diseaseRisk = agronomyService.calculateDiseaseRisk(latest.temperature, latest.humidity);
+        }
+        
+        // Calculate NDVI-driven insights
+        if (latest.ndviValue != null) {
+          const ndvi = typeof latest.ndviValue === 'number' ? latest.ndviValue : parseFloat(latest.ndviValue as any);
+          yieldPotential = agronomyService.calculateYieldPotential(ndvi);
+          nitrogenReq = agronomyService.calculateNitrogenRequirement(ndvi);
+        }
+      }
+
+      res.json({ 
+        healthRecords,
+        agronomy: {
+          cumulativeGDD,
+          diseaseRisk,
+          yieldPotential,
+          nitrogenReq
+        }
+      });
     } catch (error) {
       console.error('Get health history error:', error);
       res.status(500).json({ error: 'Failed to fetch health history' });
     }
   }
 );
-
-
 
 export default router;

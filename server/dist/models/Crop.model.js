@@ -68,6 +68,7 @@ Crop.init({
     sequelize: database_1.sequelize,
     tableName: 'crops',
     modelName: 'Crop',
+    underscored: true,
     indexes: [
         {
             fields: ['farm_id']

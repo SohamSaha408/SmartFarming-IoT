@@ -95,8 +95,8 @@ export default function Login() {
         <div className="flex border-b border-gray-200 mb-6">
           <button
             className={`flex-1 py-2 text-center text-sm font-medium ${mode === 'password'
-                ? 'text-primary-600 border-b-2 border-primary-600'
-                : 'text-gray-500 hover:text-gray-700'
+              ? 'text-primary-600 border-b-2 border-primary-600'
+              : 'text-gray-500 hover:text-gray-700'
               }`}
             onClick={() => setMode('password')}
           >
@@ -104,8 +104,8 @@ export default function Login() {
           </button>
           <button
             className={`flex-1 py-2 text-center text-sm font-medium ${mode === 'otp'
-                ? 'text-primary-600 border-b-2 border-primary-600'
-                : 'text-gray-500 hover:text-gray-700'
+              ? 'text-primary-600 border-b-2 border-primary-600'
+              : 'text-gray-500 hover:text-gray-700'
               }`}
             onClick={() => setMode('otp')}
           >

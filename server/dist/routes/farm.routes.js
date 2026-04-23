@@ -7,6 +7,7 @@ const auth_middleware_1 = require("../middleware/auth.middleware");
 const models_1 = require("../models");
 const geocoding_service_1 = require("../services/satellite/geocoding.service");
 const satellite_service_1 = require("../services/satellite/satellite.service");
+const export_service_1 = require("../services/export.service");
 const router = (0, express_1.Router)();
 // All routes require authentication
 router.use(auth_middleware_1.authenticate);
@@ -265,12 +266,19 @@ router.get('/:id/satellite', (0, validation_middleware_1.validate)([
             res.status(404).json({ error: 'Farm not found' });
             return;
         }
-        const startDate = req.query.startDate ? new Date(req.query.startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default to last 30 days
-        const endDate = req.query.endDate ? new Date(req.query.endDate) : new Date();
-        // Use the farm's polygon ID if available, otherwise use a generated ID based on farm ID
-        const polygonId = farm.boundary ? `poly-${farm.id}` : `mock-poly-${farm.id}`;
-        // Fetch satellite imagery
-        const imagery = await (0, satellite_service_1.getSatelliteImagery)(polygonId, startDate, endDate);
+        const startDate = req.query.startDate
+            ? new Date(req.query.startDate)
+            : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const endDate = req.query.endDate
+            ? new Date(req.query.endDate)
+            : new Date();
+        const lat = parseFloat(farm.latitude.toString());
+        const lon = parseFloat(farm.longitude.toString());
+        // FIX: pass the real farm UUID as polygonId so getOrCreatePolygon()
+        // can look up or create the correct AgroMonitoring polygon.
+        // Also pass lat/lon/farmId so the service never has to guess.
+        const imagery = await (0, satellite_service_1.getSatelliteImagery)(farm.id, // raw UUID — service resolves the real poly ID from this
+        startDate, endDate, lat, lon, farm.id);
         res.json({
             farmId: farm.id,
             imagery
@@ -279,6 +287,28 @@ router.get('/:id/satellite', (0, validation_middleware_1.validate)([
     catch (error) {
         console.error('Get satellite data error:', error);
         res.status(500).json({ error: 'Failed to fetch satellite data' });
+    }
+});
+// ── PDF farm report ──────────────────────────────────────────────────────────
+router.get('/:id/export/pdf', (0, validation_middleware_1.validate)([(0, express_validator_1.param)('id').isUUID().withMessage('Invalid farm ID')]), async (req, res) => {
+    try {
+        await (0, export_service_1.generateFarmPDF)(req.params.id, req.farmer.id, res);
+    }
+    catch (error) {
+        console.error('PDF export error:', error);
+        if (!res.headersSent)
+            res.status(500).json({ error: 'Failed to generate PDF' });
+    }
+});
+// ── CSV sensor readings export ────────────────────────────────────────────────
+router.get('/:id/export/csv', (0, validation_middleware_1.validate)([(0, express_validator_1.param)('id').isUUID().withMessage('Invalid farm ID')]), async (req, res) => {
+    try {
+        await (0, export_service_1.generateSensorCSV)(req.params.id, req.farmer.id, res);
+    }
+    catch (error) {
+        console.error('CSV export error:', error);
+        if (!res.headersSent)
+            res.status(500).json({ error: 'Failed to generate CSV' });
     }
 });
 exports.default = router;

@@ -31,8 +31,7 @@ export class MosdacService {
 
             console.log('Authenticating with MOSDAC...');
 
-            // REAL CALL (Commented out until endpoint is verified)
-            /*
+            // REAL CALL 
             const response = await axios.post<MosdacAuthResponse>(`${MOSDAC_BASE_URL}/auth/login`, {
               username,
               password
@@ -40,15 +39,9 @@ export class MosdacService {
             this.token = response.data.token;
             this.tokenExpiry = Date.now() + (response.data.expiresIn * 1000);
             return this.token;
-            */
 
-            // MOCK SUCCESS for now
-            this.token = 'mock-mosdac-token-' + Date.now();
-            this.tokenExpiry = Date.now() + 3600 * 1000;
-            return this.token;
-
-        } catch (error) {
-            console.error('MOSDAC Authentication failed:', error);
+        } catch (error: any) {
+            console.error('MOSDAC Authentication failed:', error.response?.data || error.message);
             throw error;
         }
     }
@@ -60,27 +53,25 @@ export class MosdacService {
         try {
             const token = await this.authenticate();
 
-            // Placeholder logic for fetching a standard product
-            // In a real scenario, this might download a GeoTIFF or return a WMS URL
-
             console.log(`Fetching MOSDAC NDVI for ${lat}, ${lon}`);
 
             const productCode = '3DIMG_L1B_STD'; // Example product code
 
             // REAL CALL
-            /*
             const response = await axios.get(`${MOSDAC_BASE_URL}/products/${productCode}`, {
               params: { lat, lon, date: new Date().toISOString().split('T')[0] },
               headers: { Authorization: `Bearer ${token}` }
             });
-            return response.data.url;
-            */
+            
+            if (response.data && response.data.url) {
+                return response.data.url;
+            }
 
             // Return a standard placeholder or the real WMS endpoint if known
             return `https://www.mosdac.gov.in/wms/ndvi?bbox=${lat - 0.1},${lon - 0.1},${lat + 0.1},${lon + 0.1}`;
 
-        } catch (error) {
-            console.error('Failed to fetch MOSDAC NDVI:', error);
+        } catch (error: any) {
+            console.error('Failed to fetch MOSDAC NDVI:', error.response?.data || error.message);
             return '';
         }
     }

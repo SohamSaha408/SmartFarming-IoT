@@ -131,18 +131,16 @@ router.post('/register', (0, validation_middleware_1.validate)([
 });
 // Login
 router.post('/login', (0, validation_middleware_1.validate)([
-    (0, express_validator_1.body)('phone')
+    (0, express_validator_1.body)('identifier')
         .notEmpty()
-        .withMessage('Phone number is required')
-        .matches(/^(\+91)?[0-9]{10}$/)
-        .withMessage('Invalid phone number format'),
+        .withMessage('Email or Phone is required'),
     (0, express_validator_1.body)('password')
         .notEmpty()
         .withMessage('Password is required')
 ]), async (req, res) => {
     try {
-        const { phone, password } = req.body;
-        const result = await authService.login(phone, password);
+        const { identifier, password } = req.body;
+        const result = await authService.login(identifier, password);
         if (!result.success) {
             res.status(401).json({ error: result.message });
             return;

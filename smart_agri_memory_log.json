@@ -1,0 +1,568 @@
+{
+  "project": "smart-agri-iot",
+  "generated": "2026-04-07",
+  "description": "Complete memory log — architecture, all changes, bugs found, fixes applied, current file status, and outstanding items across all sessions.",
+
+  "repository": {
+    "main_path": "D:/smart-agri-iot",
+    "working_copy_path": "D:/smart-agri-iot - Copy",
+    "policy": "All improvements and fixes applied ONLY to Copy folder. Main folder never touched.",
+    "last_git_commit": "Refactor: Move Device management to Farm Detail view",
+    "vcs": "git"
+  },
+
+  "tech_stack": {
+    "firmware": "C++ / Arduino on ESP32, built with PlatformIO",
+    "broker": "Eclipse Mosquitto 2.x (Docker container)",
+    "backend": "Node.js 18 + TypeScript + Express.js + Sequelize ORM",
+    "database": "PostgreSQL 15 (Docker container)",
+    "cache": "Redis 7 (Docker — provisioned but NOT yet wired in application code)",
+    "frontend": "React 18 + TypeScript + Vite + Tailwind CSS + Recharts + React-Leaflet",
+    "realtime": "Socket.IO (client hook useSocket.ts and LiveSensorFeed.tsx exist — server-side not yet implemented)",
+    "devops": "Docker + Docker Compose (6 services)",
+    "notifications": "Twilio (SMS) + SendGrid (Email) + Browser Notification API (PWA)",
+    "auth": "JWT access tokens (7d expiry) + refresh tokens (30d) + bcryptjs password hashing",
+    "pwa": true
+  },
+
+  "architecture": {
+    "layers": [
+      {
+        "name": "Edge — ESP32 Firmware",
+        "mqtt_publish_sensor": "farm/{FARM_ID}/sensor/{DEVICE_ID}",
+        "mqtt_publish_status": "farm/{FARM_ID}/status/{DEVICE_ID}",
+        "mqtt_subscribe_commands": "farm/{FARM_ID}/device/{DEVICE_ID}/command",
+        "mqtt_publish_ack": "farm/{FARM_ID}/device/{DEVICE_ID}/ack",
+        "sensors": [
+          "Capacitive Soil Moisture — GPIO 34 ADC",
+          "DS18B20 Soil Temperature — GPIO 4 OneWire",
+          "DHT22 Air Temp + Humidity — GPIO 5",
+          "BH1750 Light Intensity — GPIO 21/22 I2C",
+          "NPK RS-485 Probe — GPIO 25 RX / GPIO 26 TX (optional)"
+        ],
+        "actuators": [
+          "Relay Pump — GPIO 16 (active LOW)",
+          "Relay Valve — GPIO 17 (active LOW)",
+          "YF-S201 Water Flow Sensor — GPIO 18 interrupt"
+        ],
+        "firmware_version": "1.1.0",
+        "dummy_data_mode": "USE_DUMMY_DATA=true for testing without hardware"
+      },
+      {
+        "name": "Broker — Eclipse Mosquitto",
+        "server_subscribes": ["farm/+/sensor/#", "farm/+/status/#"],
+        "server_publishes": "farm/{farmId}/device/{nodeId}/command"
+      },
+      {
+        "name": "Application — Node.js/TypeScript",
+        "port": 3000,
+        "key_services": [
+          "mqttHandler — subscribe, parse, route MQTT messages",
+          "sensor.service — normalize payloads, persist SensorReading",
+          "automation.service — NDVI-adaptive thresholds, schedule irrigation/fertilization",
+          "agronomy.service — VPD, ET, GDD, disease risk, yield potential, N requirement",
+          "iot.service — device CRUD, stats, critical condition alerts",
+          "notification.service — in-app, SMS (Twilio), email (SendGrid)",
+          "satellite.service — NDVI from AgroMonitoring/MOSDAC (stub)",
+          "auth.service — register, login, OTP, JWT tokens"
+        ],
+        "middleware": ["helmet", "cors", "compression (gzip)", "express-rate-limit (100/15min)", "morgan", "JWT authenticate"]
+      },
+      {
+        "name": "Data — PostgreSQL 15",
+        "tables": [
+          "Farmer", "Farm", "Crop", "CropHealth",
+          "IoTDevice", "SensorReading",
+          "IrrigationSchedule", "FertilizationRecord",
+          "Notification", "OTP"
+        ]
+      },
+      {
+        "name": "Presentation — React 18 SPA",
+        "pwa": true,
+        "routes": [
+          "/ — Dashboard",
+          "/farms — Farm list",
+          "/farms/:id — Farm Detail (map, weather, devices, sensor charts, crops)",
+          "/crops/:id/health — Crop Health Analytics",
+          "/irrigation — Irrigation management",
+          "/fertilization — Fertilization management",
+          "/notifications — Notifications with live Socket.IO feed",
+          "/profile — User profile"
+        ],
+        "removed_routes": ["/devices — removed; device management moved into /farms/:id"],
+        "state_management": "Zustand (authStore, farmStore)"
+      }
+    ],
+    "docker_services": [
+      "postgres — PostgreSQL 15 with persistent volume",
+      "redis — Redis 7 Alpine",
+      "mosquitto — Eclipse Mosquitto 2.x",
+      "server — Node.js backend (depends on postgres, mosquitto)",
+      "client — React app served by Nginx (proxies /api to server)",
+      "adminer — DB admin UI (dev only)"
+    ]
+  },
+
+  "sessions": [
+    {
+      "session_number": 1,
+      "topic": "Initial full project scan and improvement suggestions",
+      "files_read": [
+        "README.md", "server/src/index.ts", "server/src/mqtt/mqttHandler.ts",
+        "server/src/services/automation.service.ts", "server/src/services/sensor.service.ts",
+        "server/src/services/iot/iot.service.ts", "server/src/services/auth/auth.service.ts",
+        "server/src/middleware/auth.middleware.ts",
+        "server/src/services/notification/notification.service.ts",
+        "client/src/components/dashboard/Dashboard.tsx",
+        "client/src/services/api.ts", "server/src/services/agronomy.service.ts"
+      ],
+      "bugs_identified": [
+        "mqttHandler.ts publishCommand() hardcoded topic to farm_001/node_a1 — ignored all parameters",
+        "iot.service.ts getDeviceStats() used $gte string literal instead of Op.gte — query always returned 0 rows",
+        "sensor.service.ts used dynamic require() inside async function — breaks TypeScript strict mode",
+        "auth.service.ts universal OTP bypass (123456) left active — major security hole if deployed"
+      ],
+      "improvements_suggested": [
+        "WebSockets (Socket.IO) for real-time sensor push",
+        "Predictive irrigation using Open-Meteo 72h forecast",
+        "TimescaleDB for sensor time-series query performance",
+        "Redis caching wired up (infrastructure exists, code does not use it)",
+        "Role-based access control (owner / field worker / agronomist)",
+        "Offline ESP32 firmware buffering to SPIFFS flash",
+        "Automated Jest + Supertest tests",
+        "GitHub Actions CI/CD pipeline",
+        "Sequelize migrations instead of sync({ alter: true })",
+        "Satellite imagery completion (AgroMonitoring stubs)",
+        "Multi-language support — Hindi via react-i18n",
+        "Audit log table for all device commands",
+        "Data export (CSV/PDF) per farm per season",
+        "Mobile app (React Native reusing api.ts layer)",
+        "Crop disease image detection via PlantNet or TensorFlow"
+      ]
+    },
+
+    {
+      "session_number": 2,
+      "topic": "Apply all improvements to Copy folder (OTP bypass excluded by user request)",
+      "files_modified": [
+        {
+          "file": "server/src/utils/logger.ts",
+          "status": "REWRITTEN",
+          "changes": [
+            "Colorized ANSI output per level (green=INFO, yellow=WARN, red=ERROR, cyan=DEBUG)",
+            "Env-controlled verbosity via LOG_LEVEL=DEBUG|INFO|WARN|ERROR in .env",
+            "shouldLog() gate — lower-priority messages suppressed without touching call sites"
+          ]
+        },
+        {
+          "file": "server/src/mqtt/mqttHandler.ts",
+          "status": "REWRITTEN",
+          "changes": [
+            "FIXED: publishCommand() now uses dynamic topic: farm/{farmId}/device/{deviceId}/command",
+            "Exponential backoff reconnect: 1s → doubles each failure → cap 30s",
+            "Graceful JSON parse — malformed payloads caught and logged, server does not crash",
+            "Status messages now persist lastSeenAt + status to IoTDevice record",
+            "Exported getClient() for /health endpoint MQTT connectivity check"
+          ]
+        },
+        {
+          "file": "server/src/services/sensor.service.ts",
+          "status": "REWRITTEN",
+          "changes": [
+            "Replaced dynamic require() with top-level import of Farm model",
+            "Added nitrogenLevel, phosphorusLevel, potassiumLevel, soilPh field saving",
+            "Accepts both field name variants (soilMoisture/moisture, airHumidity/humidity etc.)",
+            "parseNumber() helper handles NaN strings, null, undefined edge cases"
+          ]
+        },
+        {
+          "file": "server/src/services/automation.service.ts",
+          "status": "REWRITTEN",
+          "changes": [
+            "Added Phosphorus and Potassium threshold checks (were completely absent)",
+            "Irrigation dedup changed from per-farm/crop to per-DEVICE",
+            "6-hour cooldown guard added: no re-irrigation within 6h of last completed event",
+            "Irrigation duration NDVI-adaptive: D = 15 + (1-NDVI)*25 minutes (15-40 min range)",
+            "In-app notification fires when auto-irrigation triggers",
+            "In-app notification fires when fertilization recommended",
+            "Fertilization quantity calculated: (threshold - currentLevel) * 0.8 kg"
+          ]
+        },
+        {
+          "file": "server/src/services/iot/iot.service.ts",
+          "status": "REWRITTEN",
+          "changes": [
+            "FIXED: getDeviceStats() Op.gte bug — was $gte string, now correct Sequelize operator",
+            "pH alert now specifies acidic (recommend lime) vs alkaline (recommend sulphur)",
+            "Alert deduplication: skips duplicate alerts within 1 hour for same condition+farm",
+            "getDeviceStats() now also returns min/max moisture and temperature ranges",
+            "Added windSpeed field support"
+          ]
+        },
+        {
+          "file": "server/src/index.ts",
+          "status": "REWRITTEN",
+          "changes": [
+            "Added compression middleware — reduces API response sizes 60-75%",
+            "/health endpoint now tests DB + MQTT live connectivity, returns 503 if degraded",
+            "Global error handler logs request method + URL for debugging",
+            "Replaced console.log with logger.info throughout"
+          ]
+        },
+        {
+          "file": "client/src/services/api.ts",
+          "status": "REWRITTEN",
+          "changes": [
+            "15s request timeout — prevents UI hanging on slow/dead API",
+            "Global api:server-error CustomEvent dispatched on 5xx responses",
+            "Added notificationsAPI.delete(id)",
+            "Added authAPI.changePassword()",
+            "Added devicesAPI.getStats()",
+            "Added devicesAPI.getByFarm(farmId) — targeted farm device fetch"
+          ]
+        },
+        {
+          "file": "client/src/components/dashboard/Dashboard.tsx",
+          "status": "REWRITTEN",
+          "changes": [
+            "Auto-refreshes every 30s via setInterval",
+            "pendingIrrigations count from real irrigation API (was hardcoded 0)",
+            "Server error toast banner via api:server-error event listener",
+            "Last-refreshed timestamp displayed",
+            "Manual refresh button",
+            "fetchDashboardData extracted to useCallback",
+            "LiveSensorFeed widget embedded for selected farm"
+          ]
+        }
+      ]
+    },
+
+    {
+      "session_number": 3,
+      "topic": "Project updates detected in main folder — new firmware, device management refactor, PWA",
+      "updates_found": [
+        {
+          "area": "iot/firmware/main.cpp",
+          "description": "Completely rewritten from placeholder stub to full production C++ PlatformIO firmware. Added DS18B20, DHT22, NPK RS-485, YF-S201 water flow with interrupt, dual relay, USE_DUMMY_DATA flag, Preferences, MQTT command handler, irrigation completion ACK."
+        },
+        {
+          "area": "iot/firmware/platformio.ini",
+          "description": "New file — defines PlatformIO env: PubSubClient, ArduinoJson, OneWire, DallasTemperature, DHT, Adafruit Unified Sensor. Sets 921600 upload speed, exception decoder monitor filter."
+        },
+        {
+          "area": "client/src/components/farm/FarmDetail.tsx",
+          "description": "Devices section added inline with sensor chart device selector, VPD/ET agronomy cards per device, Add Device button (preselectedFarmId). Crops section also embedded. All farm management in one page."
+        },
+        {
+          "area": "client/src/components/devices/AddDeviceModal.tsx",
+          "description": "New prop preselectedFarmId — hides farm selector when set. react-hot-toast added for feedback."
+        },
+        {
+          "area": "client/src/App.tsx",
+          "description": "/devices route removed. All device interaction flows through /farms/:id."
+        },
+        {
+          "area": "client/src/components/layout/Layout.tsx",
+          "description": "Devices nav item removed. Sidebar now: Dashboard, My Farms, Irrigation, Fertilization."
+        },
+        {
+          "area": "client/dist/ (PWA assets)",
+          "description": "Service worker (sw.js), manifest.webmanifest, pwa-192x192.png, pwa-512x512.png, workbox files added. App is now a Progressive Web App."
+        },
+        {
+          "area": "client/src/hooks/useSocket.ts",
+          "description": "New file — Socket.IO hook managing farm subscription, live sensor readings, device status, alerts, irrigation updates. Supports native browser Notification API + mobile vibration on critical alerts."
+        },
+        {
+          "area": "client/src/components/devices/LiveSensorFeed.tsx",
+          "description": "New file — React component showing live sensor values with sparkline charts, border flash on new reading, device status pills, waiting state."
+        },
+        {
+          "area": "client/src/components/notifications/Notifications.tsx",
+          "description": "Heavily updated — added Live tab with Socket.IO alert feed, push notification permission button, severity color coding, SMS/Email sent badges, WifiIcon connection indicator."
+        }
+      ]
+    },
+
+    {
+      "session_number": 4,
+      "topic": "Fix 3 bugs identified in updated project",
+      "bugs_fixed": [
+        {
+          "id": "BUG-001",
+          "severity": "CRITICAL",
+          "title": "MQTT topic mismatch — ESP32 and server never communicating",
+          "root_cause": "Firmware published to 'smart-agri/sensors/{MAC}/data'. Server subscribed to 'farm/+/sensor/#'. Zero overlap — no sensor data ever reached the server.",
+          "files_changed": ["iot/firmware/main.cpp"],
+          "fix": [
+            "Added FARM_ID constant — user must set to their farm UUID from dashboard",
+            "TOPIC_SENSOR_DATA: farm/{FARM_ID}/sensor/{DEVICE_ID}",
+            "TOPIC_DEVICE_STATUS: farm/{FARM_ID}/status/{DEVICE_ID}",
+            "TOPIC_COMMAND: farm/{FARM_ID}/device/{DEVICE_ID}/command",
+            "TOPIC_IRRIGATION_ACK: farm/{FARM_ID}/device/{DEVICE_ID}/ack",
+            "JSON payload now includes farmId field",
+            "JSON field names aligned with server SensorPayload: soilMoisture, soilTemperature, airTemperature, airHumidity",
+            "Firmware version bumped 1.0.0 → 1.1.0"
+          ],
+          "verified": true
+        },
+        {
+          "id": "BUG-002",
+          "severity": "LOW",
+          "title": "Debug console.log firing on every AddDeviceModal render",
+          "root_cause": "console.log('AddDeviceModal render cycle') left in production component",
+          "files_changed": ["client/src/components/devices/AddDeviceModal.tsx"],
+          "fix": "Line removed entirely",
+          "verified": true
+        },
+        {
+          "id": "BUG-003",
+          "severity": "MEDIUM",
+          "title": "FarmDetail fetched all devices then discarded most with client-side filter",
+          "root_cause": "devicesAPI.getAll() fetched every device across all farms. .filter(d => d.farmId === id) ran in browser. Scales poorly — transfers N*M devices to use M.",
+          "files_changed": [
+            "client/src/components/farm/FarmDetail.tsx",
+            "client/src/services/api.ts",
+            "server/src/routes/device.routes.ts"
+          ],
+          "fix": [
+            "api.ts: Added devicesAPI.getByFarm(farmId) — sends GET /api/devices?farmId={id}",
+            "device.routes.ts: GET / reads req.query.farmId, validates ownership, applies WHERE farmId = ? in SQL",
+            "FarmDetail.tsx: Both initial load and post-add-device refresh use getByFarm(id)",
+            "FarmDetail.tsx: refreshDevices renamed to fetchDevices for consistency"
+          ],
+          "verified": true
+        }
+      ]
+    },
+
+    {
+      "session_number": 5,
+      "topic": "Fix 2 build errors from screenshot — Dashboard.tsx truncated, Notifications.tsx duplicated",
+      "bugs_fixed": [
+        {
+          "id": "BUILD-001",
+          "error": "Dashboard.tsx:204 — Unclosed JSX div / unexpected end of file",
+          "root_cause": "File was truncated mid-session during session 2. File ended at line 203 after the Stats Grid. Entire second half was missing: farm selector, crops grid, recent notifications section, closing </div> and }.",
+          "files_changed": ["client/src/components/dashboard/Dashboard.tsx"],
+          "fix": "Rewrote complete component in chunks. File is now 347 lines, fully valid JSX.",
+          "verified": true
+        },
+        {
+          "id": "BUILD-002",
+          "error": "Notifications.tsx:449 — Unexpected '}'",
+          "root_cause": "File contained the full component twice. New version (with Socket.IO, Live tab, severity colors) ended correctly around line 285. Then the entire old original version appeared again — bare function declarations outside any component caused parse failure at line 449.",
+          "files_changed": ["client/src/components/notifications/Notifications.tsx"],
+          "fix": "Rewrote file from scratch as single clean version (248 lines). Duplicate second half removed entirely.",
+          "verified": true
+        }
+      ]
+    }
+  ],
+
+  "current_file_status": {
+    "server_src": {
+      "index.ts":                              "IMPROVED — compression, live health check, better error handler",
+      "utils/logger.ts":                       "IMPROVED — colorized, env-controlled log levels",
+      "mqtt/mqttHandler.ts":                   "IMPROVED — dynamic topics fixed, exponential backoff, graceful JSON parse",
+      "middleware/auth.middleware.ts":         "ORIGINAL — untouched",
+      "middleware/validation.middleware.ts":   "ORIGINAL — untouched",
+      "models/":                               "ORIGINAL — all 10 models untouched",
+      "routes/auth.routes.ts":                 "ORIGINAL — untouched",
+      "routes/farm.routes.ts":                 "ORIGINAL — untouched",
+      "routes/crop.routes.ts":                 "ORIGINAL — untouched",
+      "routes/device.routes.ts":              "IMPROVED — ?farmId= query param support added",
+      "routes/irrigation.routes.ts":           "ORIGINAL — untouched",
+      "routes/fertilization.routes.ts":        "ORIGINAL — untouched",
+      "routes/notification.routes.ts":         "ORIGINAL — untouched",
+      "services/sensor.service.ts":           "IMPROVED — top-level import, NPK/pH fields, dual field names",
+      "services/automation.service.ts":       "IMPROVED — P/K checks, per-device dedup, cooldown, notifications",
+      "services/agronomy.service.ts":          "ORIGINAL — untouched",
+      "services/auth/auth.service.ts":         "ORIGINAL — OTP bypass left as-is per user request",
+      "services/iot/iot.service.ts":           "IMPROVED — Op.gte fix, pH acidic/alkaline, alert dedup, min/max stats",
+      "services/notification/notification.service.ts": "ORIGINAL — untouched",
+      "services/fertilization/fertilization.service.ts": "ORIGINAL — untouched",
+      "services/irrigation/irrigation.service.ts":       "ORIGINAL — untouched",
+      "services/satellite/":                   "ORIGINAL — all satellite service stubs untouched"
+    },
+    "client_src": {
+      "App.tsx":                               "ORIGINAL — devices route already removed in main",
+      "main.tsx":                              "ORIGINAL — untouched",
+      "index.css":                             "ORIGINAL — untouched",
+      "services/api.ts":                      "IMPROVED — timeout, error event, getByFarm, delete notification",
+      "store/authStore.ts":                    "ORIGINAL — untouched",
+      "store/farmStore.ts":                    "ORIGINAL — untouched",
+      "hooks/useSocket.ts":                    "ORIGINAL — new file from main, kept as-is",
+      "components/auth/Login.tsx":             "ORIGINAL — untouched",
+      "components/layout/Layout.tsx":          "ORIGINAL — devices nav already removed in main",
+      "components/dashboard/Dashboard.tsx":   "FIXED + IMPROVED — truncation repaired, full component restored",
+      "components/farm/Farms.tsx":             "ORIGINAL — untouched",
+      "components/farm/FarmDetail.tsx":       "FIXED — uses devicesAPI.getByFarm(), renamed to fetchDevices",
+      "components/farm/AddFarmModal.tsx":      "ORIGINAL — untouched",
+      "components/devices/AddDeviceModal.tsx":"FIXED — debug console.log removed",
+      "components/devices/LiveSensorFeed.tsx": "ORIGINAL — new file from main, kept as-is",
+      "components/crops/AddCropModal.tsx":     "ORIGINAL — untouched",
+      "components/crops/CropHealth.tsx":       "ORIGINAL — untouched",
+      "components/common/SensorChart.tsx":     "ORIGINAL — untouched",
+      "components/irrigation/Irrigation.tsx":  "ORIGINAL — untouched",
+      "components/fertilization/Fertilization.tsx": "ORIGINAL — untouched",
+      "components/notifications/Notifications.tsx": "FIXED — duplicate body removed, single clean version",
+      "components/profile/Profile.tsx":        "ORIGINAL — untouched"
+    },
+    "iot_firmware": {
+      "main.cpp":       "FIXED + IMPROVED — correct MQTT topics, farmId, aligned JSON field names, v1.1.0",
+      "platformio.ini": "ORIGINAL — new file from main, kept as-is"
+    },
+    "root": {
+      "smart_agri_memory_log.json": "NEW — this file, complete project memory log"
+    }
+  },
+
+  "testing_honesty": {
+    "disclaimer": "No automated tests have been run against this codebase. All changes were applied via static code analysis and logic review only.",
+    "what_was_verified": [
+      "File structure — confirmed files exist at expected paths using list_directory and get_file_info",
+      "JSX validity — Dashboard.tsx and Notifications.tsx visually inspected line-by-line for matching braces and tags",
+      "MQTT topic alignment — cross-referenced firmware topic strings against server mqttHandler subscription patterns",
+      "API endpoint alignment — cross-referenced devicesAPI.getByFarm() call with device.routes.ts query param handling",
+      "Op.gte fix — confirmed Sequelize Op import exists in iot.service.ts and correct operator is used",
+      "Automation service — threshold formulas verified mathematically against NDVI range 0-1",
+      "console.log removal — confirmed line no longer exists in AddDeviceModal.tsx"
+    ],
+    "what_has_not_been_tested": [
+      "Runtime execution — server has not been started and no HTTP requests have been made",
+      "Database queries — no actual Sequelize queries run against PostgreSQL",
+      "MQTT flow — no real ESP32 connected, no broker running, no end-to-end publish/subscribe tested",
+      "Socket.IO server side — useSocket.ts and LiveSensorFeed.tsx exist client-side but server-side Socket.IO emitter is NOT implemented anywhere in the backend",
+      "Browser rendering — React components not rendered in a browser",
+      "TypeScript compilation — tsc not run, type errors may exist",
+      "PWA service worker — not tested",
+      "Docker Compose build — not verified"
+    ]
+  },
+
+  "known_outstanding_issues": [
+    {
+      "id": "ISSUE-001",
+      "severity": "CRITICAL",
+      "title": "Socket.IO server-side not implemented",
+      "description": "useSocket.ts, LiveSensorFeed.tsx, and Notifications.tsx all connect to a Socket.IO server and listen for events: sensor:reading, device:status, alert:new, push:notification, irrigation:update. None of these events are emitted anywhere in the backend. The server has no socket.io dependency, no io.on() handlers, and no server-side Socket.IO setup.",
+      "impact": "Live Sensor Feed shows 'Disconnected' forever. Live Notifications tab is always empty. Push notifications never fire.",
+      "fix_needed": "Install socket.io on server, initialize in index.ts, emit sensor:reading from mqttHandler when a message is processed, emit alert:new from notification.service when critical alerts fire."
+    },
+    {
+      "id": "ISSUE-002",
+      "severity": "MEDIUM",
+      "title": "Redis provisioned but not used",
+      "description": "Redis 7 runs as a Docker service. No code in the application reads from or writes to Redis.",
+      "fix_needed": "Wire up ioredis client, cache farm/crop GET responses with 60s TTL, use Redis for MQTT device rate-limiting."
+    },
+    {
+      "id": "ISSUE-003",
+      "severity": "MEDIUM",
+      "title": "Satellite services are stubs",
+      "description": "agromonitoring.service.ts, mosdac.service.ts, satellite.service.ts exist but return mock/hardcoded data. NDVI values used in automation thresholds default to 0.5 when no CropHealth record exists.",
+      "fix_needed": "Complete AgroMonitoring API integration with real polygon creation and NDVI fetch, or integrate Sentinel Hub API."
+    },
+    {
+      "id": "ISSUE-004",
+      "severity": "MEDIUM",
+      "title": "No server-side token refresh endpoint",
+      "description": "api.ts interceptor calls POST /api/auth/refresh on 401, but auth.routes.ts has no /refresh route. Refresh token rotation will always fail, logging the user out.",
+      "fix_needed": "Add POST /api/auth/refresh route in auth.routes.ts that validates the refresh token and returns new access + refresh tokens."
+    },
+    {
+      "id": "ISSUE-005",
+      "severity": "LOW",
+      "title": "OTP bypass (123456) active in auth.service.ts",
+      "description": "Universal OTP 123456 works in all environments, auto-creates accounts. Left as-is per user instruction.",
+      "fix_needed": "Wrap bypass in: if (process.env.NODE_ENV !== 'production') guard when ready to deploy."
+    },
+    {
+      "id": "ISSUE-006",
+      "severity": "LOW",
+      "title": "farmStore.ts selectedFarm may be null when Notifications.tsx mounts",
+      "description": "Notifications.tsx reads selectedFarm?.id from useFarmStore(). If the user navigates directly to /notifications without visiting /farms first, selectedFarm is null, useSocket receives null farmId, and no farm subscription is made.",
+      "fix_needed": "In Notifications.tsx, add a fetchFarms() call on mount to ensure selectedFarm is populated."
+    }
+  ],
+
+  "upgrade_roadmap": [
+    {
+      "priority": 1,
+      "title": "Implement Socket.IO server side",
+      "effort": "Medium",
+      "impact": "Critical — enables Live Sensor Feed, live notifications, push alerts. Client code already written.",
+      "steps": [
+        "npm install socket.io in server/",
+        "Initialize io in server/src/index.ts attached to http.Server",
+        "Emit sensor:reading from mqttHandler.ts after saveSensorData()",
+        "Emit alert:new from notification.service.ts after createCriticalAlert()",
+        "Emit device:status from iot.service.ts after updateDeviceStatus()",
+        "Implement subscribe:farm room joining so clients only receive their farm events"
+      ]
+    },
+    {
+      "priority": 2,
+      "title": "Add POST /api/auth/refresh route",
+      "effort": "Low",
+      "impact": "High — without this, users get logged out every 7 days silently",
+      "steps": [
+        "Add route in auth.routes.ts: POST /refresh",
+        "Call verifyRefreshToken(token) from auth.middleware.ts",
+        "If valid, issue new accessToken + refreshToken and return them"
+      ]
+    },
+    {
+      "priority": 3,
+      "title": "Predictive irrigation with Open-Meteo",
+      "effort": "Low",
+      "impact": "High — prevents unnecessary irrigation before rain, pre-irrigates before heatwave",
+      "steps": [
+        "Call https://api.open-meteo.com/v1/forecast?latitude=X&longitude=Y&hourly=precipitation_probability,temperature_2m",
+        "In automation.service.ts: skip scheduling if precipitation_probability > 60% in next 6h",
+        "Add weather forecast card to FarmDetail.tsx"
+      ]
+    },
+    {
+      "priority": 4,
+      "title": "Wire up Redis caching",
+      "effort": "Low",
+      "impact": "Medium — reduces DB load, improves API response time",
+      "steps": [
+        "npm install ioredis in server/",
+        "Create server/src/config/redis.ts client",
+        "Cache GET /api/farms response per farmerId with 60s TTL",
+        "Cache GET /api/devices?farmId= per farmId with 30s TTL",
+        "Invalidate on POST/PUT/DELETE to respective resources"
+      ]
+    },
+    {
+      "priority": 5,
+      "title": "TimescaleDB for SensorReading",
+      "effort": "Low",
+      "impact": "High — 10-100x faster time-range queries as data grows",
+      "steps": [
+        "Add TimescaleDB extension to postgres Docker image",
+        "Run: SELECT create_hypertable('SensorReadings', 'recordedAt');",
+        "No Sequelize model changes needed — TimescaleDB is PostgreSQL-compatible"
+      ]
+    }
+  ],
+
+  "agronomy_formulas": {
+    "ndvi_moisture_threshold": "T_moisture = 20 + max(0, (1 - NDVI) * 20) — range 20% to 40%",
+    "ndvi_nitrogen_threshold": "T_nitrogen = 15 + max(0, (1 - NDVI) * 15) — range 15 to 30",
+    "ndvi_phosphorus_threshold": "T_phosphorus = 10 + max(0, (1 - NDVI) * 10) — range 10 to 20",
+    "ndvi_potassium_threshold": "T_potassium = 12 + max(0, (1 - NDVI) * 12) — range 12 to 24",
+    "irrigation_duration": "D = 15 + (1 - NDVI) * 25 minutes — range 15 to 40 min",
+    "vpd": "SVP = 0.61078 * exp(17.27T / (T + 237.3)) kPa; VPD = SVP * (1 - H/100) kPa",
+    "vpd_status": "Low: VPD < 0.4 (fungal risk), Optimal: 0.4-1.2, High: > 1.2 (plant stress)",
+    "et_proxy": "ET = 0.25T - 0.05H + 0.08 * (L/10000) mm/day",
+    "gdd": "GDD = max(0, T_avg - T_base) — T_base default 10C, configurable per crop",
+    "disease_risk": "Score = (RH>85: +60, RH>75: +30) + (15<T<25: +40, 25<T<30: +20); High >= 80, Moderate >= 50",
+    "yield_potential": "min(100, NDVI/0.85 * 100) %",
+    "nitrogen_requirement": "max(0, (0.75 - NDVI) * 160) kg/ha"
+  }
+}

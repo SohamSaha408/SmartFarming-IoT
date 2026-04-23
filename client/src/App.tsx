@@ -5,7 +5,6 @@ import Login from './components/auth/Login'
 import Dashboard from './components/dashboard/Dashboard'
 import Farms from './components/farm/Farms'
 import FarmDetail from './components/farm/FarmDetail'
-import Crops from './components/crops/Crops'
 import CropHealth from './components/crops/CropHealth'
 import Irrigation from './components/irrigation/Irrigation'
 import Fertilization from './components/fertilization/Fertilization'
@@ -43,7 +42,6 @@ function App() {
         <Route index element={<Dashboard />} />
         <Route path="farms" element={<Farms />} />
         <Route path="farms/:id" element={<FarmDetail />} />
-        <Route path="crops" element={<Crops />} />
         <Route path="crops/:id/health" element={<CropHealth />} />
         <Route path="irrigation" element={<Irrigation />} />
         <Route path="fertilization" element={<Fertilization />} />

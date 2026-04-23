@@ -8,37 +8,50 @@ const sequelize_1 = require("sequelize");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 const isProduction = process.env.NODE_ENV === 'production';
-exports.sequelize = new sequelize_1.Sequelize(process.env.DATABASE_URL || {
-    database: process.env.DB_NAME || 'smart_agri',
-    username: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'password',
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    dialect: 'postgres',
-}, {
-    dialect: 'postgres',
-    logging: isProduction ? false : console.log,
-    // Most managed Postgres providers (Neon/Supabase/Railway/etc.) require SSL in production.
-    // This makes the connection resilient even if the URL does not include `?sslmode=require`.
-    dialectOptions: isProduction
-        ? {
-            ssl: {
-                require: true,
-                rejectUnauthorized: false,
-            },
-        }
-        : undefined,
-    pool: {
-        max: 10,
-        min: 0,
-        acquire: 30000,
-        idle: 10000
-    },
-    define: {
-        timestamps: true,
-        underscored: true,
+const dbUrl = process.env.DATABASE_URL;
+const isRemoteDb = process.env.DATABASE_URL?.includes('neon.tech');
+const useSsl = isProduction || isRemoteDb || process.env.DB_SSL === 'true';
+const dialectOptions = useSsl
+    ? {
+        ssl: {
+            require: true,
+            rejectUnauthorized: false,
+        },
     }
-});
+    : undefined;
+exports.sequelize = dbUrl
+    ? new sequelize_1.Sequelize(dbUrl, {
+        dialect: 'postgres',
+        logging: isProduction ? false : console.log,
+        dialectOptions,
+        pool: {
+            max: 10,
+            min: 0,
+            acquire: 30000,
+            idle: 10000
+        },
+        define: {
+            timestamps: true,
+            underscored: true,
+        }
+    })
+    : new sequelize_1.Sequelize(process.env.DB_NAME || 'smart_agri', process.env.DB_USER || 'postgres', process.env.DB_PASSWORD || 'password', {
+        host: process.env.DB_HOST || 'postgres', // Default to docker service name if not set
+        port: parseInt(process.env.DB_PORT || '5432'),
+        dialect: 'postgres',
+        logging: isProduction ? false : console.log,
+        dialectOptions,
+        pool: {
+            max: 10,
+            min: 0,
+            acquire: 30000,
+            idle: 10000
+        },
+        define: {
+            timestamps: true,
+            underscored: true,
+        }
+    });
 const testConnection = async () => {
     try {
         await exports.sequelize.authenticate();

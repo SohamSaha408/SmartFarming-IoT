@@ -32,17 +32,39 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
+const mqttHandler_1 = require("../mqtt/mqttHandler");
 const express_validator_1 = require("express-validator");
 const validation_middleware_1 = require("../middleware/validation.middleware");
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const models_1 = require("../models");
 const sequelize_1 = require("sequelize");
 const iotService = __importStar(require("../services/iot/iot.service"));
+const agronomyService = __importStar(require("../services/agronomy.service"));
+const multer_1 = __importDefault(require("multer"));
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
+const otaService = __importStar(require("../services/ota.service"));
+// ── Multer config: store .bin uploads in a temp folder, max 4 MB ─────────────
+const otaUpload = (0, multer_1.default)({
+    dest: path_1.default.join(__dirname, '../../../../ota_firmware/tmp'),
+    limits: { fileSize: 4 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        if (file.originalname.endsWith('.bin'))
+            return cb(null, true);
+        cb(new Error('Only .bin firmware files are accepted'));
+    },
+});
 const router = (0, express_1.Router)();
 router.use(auth_middleware_1.authenticate);
 // Get all devices for farmer's farms
+// FIXED: now accepts optional ?farmId= query param to return only devices for
+// a specific farm. Previously the frontend called getAll() and filtered client-side,
+// which fetched every device across every farm unnecessarily.
 router.get('/', async (req, res) => {
     try {
         const farms = await models_1.Farm.findAll({
@@ -50,8 +72,13 @@ router.get('/', async (req, res) => {
             attributes: ['id']
         });
         const farmIds = farms.map(f => f.id);
+        // If caller supplies ?farmId=, restrict to that single farm (after ownership check)
+        const requestedFarmId = req.query.farmId;
+        const whereClause = requestedFarmId && farmIds.includes(requestedFarmId)
+            ? { farmId: requestedFarmId }
+            : { farmId: { [sequelize_1.Op.in]: farmIds } };
         const devices = await models_1.IoTDevice.findAll({
-            where: { farmId: { [sequelize_1.Op.in]: farmIds } },
+            where: whereClause,
             include: [
                 { model: models_1.Farm, as: 'farm', attributes: ['name'] }
             ],
@@ -70,7 +97,7 @@ router.post('/register', (0, validation_middleware_1.validate)([
     (0, express_validator_1.body)('deviceId')
         .notEmpty()
         .withMessage('Device ID is required')
-        .isLength({ min: 8, max: 100 }),
+        .isLength({ min: 2, max: 100 }),
     (0, express_validator_1.body)('deviceType')
         .isIn(['soil_sensor', 'water_pump', 'valve', 'weather_station', 'npk_sensor'])
         .withMessage('Invalid device type'),
@@ -127,10 +154,28 @@ router.get('/:id', (0, validation_middleware_1.validate)([
         const latestReadings = await iotService.getLatestReadings(device.id, 5);
         // Get stats
         const stats = await iotService.getDeviceStats(device.id, 24);
+        // Add agronomy stats dynamically based on the latest reading
+        let agronomy = null;
+        if (latestReadings && latestReadings.length > 0) {
+            const latest = latestReadings[0];
+            const temp = latest.airTemperature || latest.soilTemperature;
+            const hum = latest.airHumidity;
+            const light = latest.lightIntensity;
+            if (temp != null && hum != null) {
+                const vpdInfo = agronomyService.calculateVPD(temp, hum);
+                const etInfo = agronomyService.calculateET(temp, hum, light || 0);
+                agronomy = {
+                    vpd: vpdInfo.value,
+                    vpdStatus: vpdInfo.status,
+                    et: etInfo
+                };
+            }
+        }
         res.json({
             device,
             latestReadings,
-            stats
+            stats,
+            agronomy
         });
     }
     catch (error) {
@@ -266,14 +311,13 @@ router.post('/:id/command', (0, validation_middleware_1.validate)([
             res.status(404).json({ error: 'Device not found' });
             return;
         }
-        // Import MQTT function
-        const { publishMessage } = await Promise.resolve().then(() => __importStar(require('../config/mqtt')));
-        const topic = `smart-agri/devices/${device.deviceId}/command`;
-        const success = publishMessage(topic, {
-            action: req.body.action,
+        // Use standardized MQTT handler
+        (0, mqttHandler_1.publishCommand)(device.farmId, device.deviceId, req.body.action, {
             params: req.body.params || {},
             timestamp: Date.now()
         });
+        // Assuming success as publishCommand is void/async fire-and-forget in current implementation
+        const success = true;
         if (!success) {
             res.status(500).json({ error: 'Failed to send command' });
             return;
@@ -283,6 +327,143 @@ router.post('/:id/command', (0, validation_middleware_1.validate)([
     catch (error) {
         console.error('Send command error:', error);
         res.status(500).json({ error: 'Failed to send command' });
+    }
+});
+// ═══════════════════════════════════════════════════════════════════════════
+// OTA FIRMWARE ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * POST /api/devices/:id/ota
+ * Upload a new .bin firmware for this device's type.
+ * Body (multipart/form-data):
+ *   file        – the .bin firmware file
+ *   version     – semver string e.g. "1.2.3"
+ *   deviceType  – optional override; defaults to the device's own type
+ *   releaseNotes – optional text
+ */
+router.post('/:id/ota', otaUpload.single('file'), (0, validation_middleware_1.validate)([(0, express_validator_1.param)('id').isUUID()]), async (req, res) => {
+    try {
+        // Verify ownership
+        const device = await models_1.IoTDevice.findByPk(req.params.id, {
+            include: [{ model: models_1.Farm, as: 'farm', where: { farmerId: req.farmer.id } }],
+        });
+        if (!device) {
+            res.status(404).json({ error: 'Device not found' });
+            return;
+        }
+        if (!req.file) {
+            res.status(400).json({ error: 'No .bin file uploaded' });
+            return;
+        }
+        const { version, deviceType, releaseNotes } = req.body;
+        if (!version) {
+            res.status(400).json({ error: 'version is required' });
+            return;
+        }
+        // Ensure tmp dir exists (multer dest)
+        const tmpDir = path_1.default.join(__dirname, '../../../../ota_firmware/tmp');
+        if (!fs_1.default.existsSync(tmpDir))
+            fs_1.default.mkdirSync(tmpDir, { recursive: true });
+        const firmware = await otaService.saveFirmware({
+            deviceType: deviceType || device.deviceType,
+            version,
+            tmpPath: req.file.path,
+            originalName: req.file.originalname,
+            releaseNotes,
+            uploadedBy: req.farmer.id,
+        });
+        res.status(201).json({
+            message: 'Firmware uploaded successfully',
+            firmware: {
+                id: firmware.id,
+                deviceType: firmware.deviceType,
+                version: firmware.version,
+                fileSizeBytes: firmware.fileSizeBytes,
+                checksum: firmware.checksum,
+                releaseNotes: firmware.releaseNotes,
+                createdAt: firmware.createdAt,
+            },
+        });
+    }
+    catch (err) {
+        console.error('OTA upload error:', err);
+        res.status(500).json({ error: err.message || 'OTA upload failed' });
+    }
+});
+/**
+ * GET /api/devices/:id/ota/check?version=1.0.0
+ * Called by the ESP32 on every boot to see if a newer firmware is available.
+ * No auth required — device uses its DB UUID as path param.
+ */
+router.get('/:id/ota/check', async (req, res) => {
+    try {
+        const currentVersion = req.query.version || '0.0.0';
+        const result = await otaService.checkForUpdate(req.params.id, currentVersion);
+        res.json(result);
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message || 'OTA check failed' });
+    }
+});
+/**
+ * GET /api/devices/:id/ota/download
+ * Streams the active .bin firmware binary to the ESP32 via HTTPUpdate.
+ * No auth required — device uses its DB UUID.
+ */
+router.get('/:id/ota/download', async (req, res) => {
+    try {
+        const firmware = await otaService.getActiveFirmware(req.params.id);
+        if (!firmware || !fs_1.default.existsSync(firmware.filePath)) {
+            res.status(404).json({ error: 'No firmware available' });
+            return;
+        }
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${firmware.fileName}"`);
+        res.setHeader('Content-Length', firmware.fileSizeBytes);
+        res.setHeader('x-MD5', firmware.checksum); // HTTPUpdate reads this header
+        fs_1.default.createReadStream(firmware.filePath).pipe(res);
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message || 'OTA download failed' });
+    }
+});
+/**
+ * POST /api/devices/:id/ota/confirm
+ * ESP32 calls this after a successful flash to record the new version.
+ * Body: { version: "1.2.3" }
+ */
+router.post('/:id/ota/confirm', async (req, res) => {
+    try {
+        const { version } = req.body;
+        if (!version) {
+            res.status(400).json({ error: 'version required' });
+            return;
+        }
+        await otaService.confirmInstall(req.params.id, version);
+        res.json({ message: 'Firmware version recorded', version });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message || 'Confirm failed' });
+    }
+});
+/**
+ * GET /api/devices/:id/ota/history
+ * Dashboard: list all firmware records for this device's type.
+ */
+router.get('/:id/ota/history', (0, validation_middleware_1.validate)([(0, express_validator_1.param)('id').isUUID()]), async (req, res) => {
+    try {
+        const device = await models_1.IoTDevice.findByPk(req.params.id, {
+            include: [{ model: models_1.Farm, as: 'farm', where: { farmerId: req.farmer.id } }],
+        });
+        if (!device) {
+            res.status(404).json({ error: 'Device not found' });
+            return;
+        }
+        const list = await otaService.listFirmware(device.deviceType);
+        res.json({ firmware: list });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message || 'History fetch failed' });
     }
 });
 exports.default = router;

@@ -5,6 +5,7 @@ import { authenticate, AuthRequest } from '../middleware/auth.middleware';
 import { Farm, Crop, IoTDevice, IrrigationSchedule } from '../models';
 import { reverseGeocode } from '../services/satellite/geocoding.service';
 import { getCurrentWeather, getWeatherForecast, getSatelliteImagery } from '../services/satellite/satellite.service';
+import { generateFarmPDF, generateSensorCSV } from '../services/export.service';
 
 const router = Router();
 
@@ -316,17 +317,26 @@ router.get(
         return;
       }
 
-      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default to last 30 days
-      const endDate = req.query.endDate ? new Date(req.query.endDate as string) : new Date();
+      const startDate = req.query.startDate
+        ? new Date(req.query.startDate as string)
+        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const endDate = req.query.endDate
+        ? new Date(req.query.endDate as string)
+        : new Date();
 
-      // Use the farm's polygon ID if available, otherwise use a generated ID based on farm ID
-      const polygonId = farm.boundary ? `poly-${farm.id}` : `mock-poly-${farm.id}`;
+      const lat = parseFloat(farm.latitude.toString());
+      const lon = parseFloat(farm.longitude.toString());
 
-      // Fetch satellite imagery
+      // FIX: pass the real farm UUID as polygonId so getOrCreatePolygon()
+      // can look up or create the correct AgroMonitoring polygon.
+      // Also pass lat/lon/farmId so the service never has to guess.
       const imagery = await getSatelliteImagery(
-        polygonId,
+        farm.id,     // raw UUID — service resolves the real poly ID from this
         startDate,
-        endDate
+        endDate,
+        lat,
+        lon,
+        farm.id
       );
 
       res.json({
@@ -338,6 +348,34 @@ router.get(
       res.status(500).json({ error: 'Failed to fetch satellite data' });
     }
   }
+);
+
+// ── PDF farm report ──────────────────────────────────────────────────────────
+router.get(
+    '/:id/export/pdf',
+    validate([param('id').isUUID().withMessage('Invalid farm ID')]),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            await generateFarmPDF(req.params.id, req.farmer!.id, res);
+        } catch (error) {
+            console.error('PDF export error:', error);
+            if (!res.headersSent) res.status(500).json({ error: 'Failed to generate PDF' });
+        }
+    }
+);
+
+// ── CSV sensor readings export ────────────────────────────────────────────────
+router.get(
+    '/:id/export/csv',
+    validate([param('id').isUUID().withMessage('Invalid farm ID')]),
+    async (req: AuthRequest, res: Response) => {
+        try {
+            await generateSensorCSV(req.params.id, req.farmer!.id, res);
+        } catch (error) {
+            console.error('CSV export error:', error);
+            if (!res.headersSent) res.status(500).json({ error: 'Failed to generate CSV' });
+        }
+    }
 );
 
 export default router;

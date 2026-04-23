@@ -85,6 +85,7 @@ IrrigationSchedule.init({
     sequelize: database_1.sequelize,
     tableName: 'irrigation_schedules',
     modelName: 'IrrigationSchedule',
+    underscored: true,
     indexes: [
         {
             fields: ['farm_id']

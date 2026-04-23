@@ -92,8 +92,8 @@ router.post(
   '/schedule',
   validate([
     body('farmId').isUUID().withMessage('Farm ID is required'),
-    body('cropId').optional().isUUID(),
-    body('deviceId').optional().isUUID(),
+    body('cropId').optional({ nullable: true }).isUUID(),
+    body('deviceId').optional({ nullable: true }).isUUID(),
     body('scheduledTime').isISO8601().withMessage('Scheduled time is required'),
     body('durationMinutes')
       .isInt({ min: 1, max: 480 })
@@ -143,8 +143,8 @@ router.post(
   '/trigger',
   validate([
     body('farmId').isUUID().withMessage('Farm ID is required'),
-    body('cropId').optional().isUUID(),
-    body('deviceId').optional().isUUID(),
+    body('cropId').optional({ nullable: true }).isUUID(),
+    body('deviceId').optional({ nullable: true }).isUUID(),
     body('durationMinutes')
       .isInt({ min: 1, max: 480 })
       .withMessage('Duration must be between 1 and 480 minutes')
@@ -188,6 +188,42 @@ router.post(
     } catch (error) {
       console.error('Trigger irrigation error:', error);
       res.status(500).json({ error: 'Failed to trigger irrigation' });
+    }
+  }
+);
+
+// Trigger immediate stop (Manual Override)
+router.post(
+  '/stop',
+  validate([
+    body('farmId').isUUID().withMessage('Farm ID is required')
+  ]),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      // Verify farm ownership
+      const farm = await Farm.findOne({
+        where: {
+          id: req.body.farmId,
+          farmerId: req.farmer!.id
+        }
+      });
+
+      if (!farm) {
+        res.status(404).json({ error: 'Farm not found' });
+        return;
+      }
+
+      const success = await irrigationService.stopIrrigation(req.body.farmId);
+
+      if (!success) {
+        res.status(500).json({ error: 'Failed to stop irrigation' });
+        return;
+      }
+
+      res.json({ message: 'Irrigation stopped manually' });
+    } catch (error) {
+      console.error('Stop irrigation error:', error);
+      res.status(500).json({ error: 'Failed to stop irrigation' });
     }
   }
 );

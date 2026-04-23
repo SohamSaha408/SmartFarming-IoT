@@ -70,6 +70,7 @@ IoTDevice.init({
     sequelize: database_1.sequelize,
     tableName: 'iot_devices',
     modelName: 'IoTDevice',
+    underscored: true,
     indexes: [
         {
             fields: ['farm_id']

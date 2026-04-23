@@ -9,6 +9,9 @@ import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import SensorChart from '../common/SensorChart'
 import AddDeviceModal from '../devices/AddDeviceModal'
+import AddCropModal from '../crops/AddCropModal'
+import ExportButtons from './ExportButtons'
+import OtaManager from '../devices/OtaManager'
 
 // Fix for missing marker icon
 import markerIcon from 'leaflet/dist/images/marker-icon.png'
@@ -51,8 +54,18 @@ export default function FarmDetail() {
   const [devices, setDevices] = useState<any[]>([])
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null)
   const [readings, setReadings] = useState<any[]>([])
+  const [deviceDetails, setDeviceDetails] = useState<any>(null)
   const [isReadingsLoading, setIsReadingsLoading] = useState(false)
   const [isAddDeviceModalOpen, setIsAddDeviceModalOpen] = useState(false)
+  const [isAddCropModalOpen, setIsAddCropModalOpen] = useState(false)
+
+  const fetchCrops = () => {
+    if (id) {
+      cropsAPI.getByFarm(id).then((res) => {
+        setCrops(res.data.crops)
+      }).catch(console.error)
+    }
+  }
 
   useEffect(() => {
     if (id) {
@@ -64,13 +77,11 @@ export default function FarmDetail() {
       }).catch(console.error)
 
       // Fetch crops
-      cropsAPI.getByFarm(id).then((res) => {
-        setCrops(res.data.crops)
-      }).catch(console.error)
+      fetchCrops()
 
-      // Fetch devices
-      devicesAPI.getAll().then((res) => {
-        const farmDevices = res.data.devices.filter((d: any) => d.farmId === id)
+      // FIXED: targeted fetch — no more getAll() + client-side filter
+      devicesAPI.getByFarm(id).then((res) => {
+        const farmDevices = res.data.devices
         setDevices(farmDevices)
         if (farmDevices.length > 0) {
           setSelectedDevice(farmDevices[0].id)
@@ -79,12 +90,15 @@ export default function FarmDetail() {
     }
   }, [id, fetchFarmById])
 
-  const refreshDevices = () => {
+  const fetchDevices = () => {
     if (id) {
-      devicesAPI.getAll().then((res) => {
-        const farmDevices = res.data.devices.filter((d: any) => d.farmId === id)
+      // FIXED: Was calling devicesAPI.getAll() and filtering client-side (wasteful —
+      // fetches every device across all farms just to discard most of them).
+      // Now calls devicesAPI.getByFarm(id) which adds ?farmId= to the request,
+      // letting the server do the filtering in SQL before any data is sent.
+      devicesAPI.getByFarm(id).then((res) => {
+        const farmDevices = res.data.devices
         setDevices(farmDevices)
-        // If we just added a device and none were selected, select the new one (simplification: select first)
         if (farmDevices.length > 0 && !selectedDevice) {
           setSelectedDevice(farmDevices[0].id)
         }
@@ -96,13 +110,17 @@ export default function FarmDetail() {
   useEffect(() => {
     if (selectedDevice) {
       setIsReadingsLoading(true)
-      devicesAPI.getReadings(selectedDevice, { limit: 50 })
-        .then((res) => {
+      Promise.all([
+        devicesAPI.getReadings(selectedDevice, { limit: 50 }),
+        devicesAPI.getById(selectedDevice)
+      ])
+        .then(([readingsRes, deviceRes]) => {
           // Sort by date ascending for chart
-          const sorted = [...res.data.readings].sort((a: any, b: any) =>
+          const sorted = [...readingsRes.data.readings].sort((a: any, b: any) =>
             new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
           )
           setReadings(sorted)
+          setDeviceDetails(deviceRes.data)
         })
         .catch(console.error)
         .finally(() => setIsReadingsLoading(false))
@@ -137,6 +155,9 @@ export default function FarmDetail() {
             {selectedFarm.village || selectedFarm.district || 'Unknown location'}
             {selectedFarm.state && `, ${selectedFarm.state}`}
           </div>
+        </div>
+        <div className="ml-auto">
+          <ExportButtons farmId={selectedFarm.id} farmName={selectedFarm.name} />
         </div>
       </div>
 
@@ -238,6 +259,25 @@ export default function FarmDetail() {
           <div className="lg:col-span-2 text-center py-12">Loading chart data...</div>
         ) : readings.length > 0 ? (
           <>
+            {deviceDetails?.agronomy && (
+              <div className="lg:col-span-2 grid grid-cols-2 gap-4 mb-4">
+                <div className="card bg-blue-50 border-blue-100">
+                  <p className="text-sm text-gray-500">Vapor Pressure Deficit (VPD)</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{deviceDetails.agronomy.vpd} kPa</p>
+                  <span className={clsx(
+                    'inline-block px-2 py-1 text-xs font-medium rounded-full mt-2',
+                    deviceDetails.agronomy.vpdStatus === 'Optimal' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                  )}>
+                    {deviceDetails.agronomy.vpdStatus}
+                  </span>
+                </div>
+                <div className="card bg-blue-50 border-blue-100">
+                  <p className="text-sm text-gray-500">Evapotranspiration (ET)</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{deviceDetails.agronomy.et} mm/d</p>
+                  <p className="text-xs text-gray-500 mt-2">Estimated Water Loss Proxy</p>
+                </div>
+              </div>
+            )}
             <SensorChart
               data={readings}
               dataKey="soilMoisture"
@@ -263,9 +303,21 @@ export default function FarmDetail() {
       {isAddDeviceModalOpen && id && (
         <AddDeviceModal
           onClose={() => setIsAddDeviceModalOpen(false)}
-          onDeviceAdded={refreshDevices}
+          onDeviceAdded={fetchDevices}
           preselectedFarmId={id}
         />
+      )}
+
+      {/* OTA Firmware Manager — one panel per device */}
+      {devices.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold text-gray-900">OTA Firmware Updates</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            {devices.map(d => (
+              <OtaManager key={d.id} deviceId={d.deviceId} />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Farm Details */}
@@ -300,12 +352,21 @@ export default function FarmDetail() {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Crops</h3>
-          <Link
-            to="/crops"
-            className="text-sm text-primary-600 hover:text-primary-700"
-          >
-            Manage Crops
-          </Link>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsAddCropModalOpen(true)}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+            >
+              <PlusIcon className="w-4 h-4" />
+              Add Crop
+            </button>
+            <Link
+              to="/crops"
+              className="text-sm text-primary-600 hover:text-primary-700"
+            >
+              Manage Crops
+            </Link>
+          </div>
         </div>
 
         {crops.length > 0 ? (
@@ -330,9 +391,25 @@ export default function FarmDetail() {
                   </span>
                 </div>
                 {crop.healthRecords?.[0] && (
-                  <div className="mt-2 text-sm text-gray-500">
-                    Health: {crop.healthRecords[0].healthScore}%
+                  <div className="mt-2 text-sm text-gray-500 flex justify-between items-center">
+                    <span>Health: {crop.healthRecords[0].healthScore}%</span>
+                    <Link
+                      to={`/crops/${crop.id}/health`}
+                      className="text-primary-600 hover:text-primary-700 font-medium"
+                    >
+                      View Details &rarr;
+                    </Link>
                   </div>
+                )}
+                {!crop.healthRecords?.[0] && (
+                   <div className="mt-2 text-right">
+                     <Link
+                       to={`/crops/${crop.id}/health`}
+                       className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                     >
+                       View Details &rarr;
+                     </Link>
+                   </div>
                 )}
               </div>
             ))}
@@ -341,6 +418,14 @@ export default function FarmDetail() {
           <p className="text-gray-500 text-center py-8">No crops added to this farm yet</p>
         )}
       </div>
+
+      {isAddCropModalOpen && id && (
+        <AddCropModal
+          farmId={id}
+          onClose={() => setIsAddCropModalOpen(false)}
+          onSuccess={fetchCrops}
+        />
+      )}
     </div>
   )
 }

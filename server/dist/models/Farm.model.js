@@ -80,6 +80,7 @@ Farm.init({
     sequelize: database_1.sequelize,
     tableName: 'farms',
     modelName: 'Farm',
+    underscored: true,
     indexes: [
         {
             fields: ['farmer_id']

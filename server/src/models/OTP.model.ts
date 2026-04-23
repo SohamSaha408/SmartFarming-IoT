@@ -12,7 +12,7 @@ interface OTPAttributes {
   updatedAt?: Date;
 }
 
-interface OTPCreationAttributes extends Optional<OTPAttributes, 'id' | 'isUsed' | 'attempts'> {}
+interface OTPCreationAttributes extends Optional<OTPAttributes, 'id' | 'isUsed' | 'attempts'> { }
 
 class OTP extends Model<OTPAttributes, OTPCreationAttributes> implements OTPAttributes {
   public id!: string;

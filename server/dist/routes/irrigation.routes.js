@@ -105,8 +105,8 @@ router.get('/schedule', (0, validation_middleware_1.validate)([
 // Create irrigation schedule
 router.post('/schedule', (0, validation_middleware_1.validate)([
     (0, express_validator_1.body)('farmId').isUUID().withMessage('Farm ID is required'),
-    (0, express_validator_1.body)('cropId').optional().isUUID(),
-    (0, express_validator_1.body)('deviceId').optional().isUUID(),
+    (0, express_validator_1.body)('cropId').optional({ nullable: true }).isUUID(),
+    (0, express_validator_1.body)('deviceId').optional({ nullable: true }).isUUID(),
     (0, express_validator_1.body)('scheduledTime').isISO8601().withMessage('Scheduled time is required'),
     (0, express_validator_1.body)('durationMinutes')
         .isInt({ min: 1, max: 480 })
@@ -142,8 +142,8 @@ router.post('/schedule', (0, validation_middleware_1.validate)([
 // Trigger immediate irrigation
 router.post('/trigger', (0, validation_middleware_1.validate)([
     (0, express_validator_1.body)('farmId').isUUID().withMessage('Farm ID is required'),
-    (0, express_validator_1.body)('cropId').optional().isUUID(),
-    (0, express_validator_1.body)('deviceId').optional().isUUID(),
+    (0, express_validator_1.body)('cropId').optional({ nullable: true }).isUUID(),
+    (0, express_validator_1.body)('deviceId').optional({ nullable: true }).isUUID(),
     (0, express_validator_1.body)('durationMinutes')
         .isInt({ min: 1, max: 480 })
         .withMessage('Duration must be between 1 and 480 minutes')
@@ -175,6 +175,34 @@ router.post('/trigger', (0, validation_middleware_1.validate)([
     catch (error) {
         console.error('Trigger irrigation error:', error);
         res.status(500).json({ error: 'Failed to trigger irrigation' });
+    }
+});
+// Trigger immediate stop (Manual Override)
+router.post('/stop', (0, validation_middleware_1.validate)([
+    (0, express_validator_1.body)('farmId').isUUID().withMessage('Farm ID is required')
+]), async (req, res) => {
+    try {
+        // Verify farm ownership
+        const farm = await models_1.Farm.findOne({
+            where: {
+                id: req.body.farmId,
+                farmerId: req.farmer.id
+            }
+        });
+        if (!farm) {
+            res.status(404).json({ error: 'Farm not found' });
+            return;
+        }
+        const success = await irrigationService.stopIrrigation(req.body.farmId);
+        if (!success) {
+            res.status(500).json({ error: 'Failed to stop irrigation' });
+            return;
+        }
+        res.json({ message: 'Irrigation stopped manually' });
+    }
+    catch (error) {
+        console.error('Stop irrigation error:', error);
+        res.status(500).json({ error: 'Failed to stop irrigation' });
     }
 });
 // Cancel irrigation schedule

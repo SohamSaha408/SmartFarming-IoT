@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateIrrigationStatus = exports.triggerIrrigation = exports.createIrrigationSchedule = exports.getIrrigationRecommendations = exports.calculateIrrigationNeed = void 0;
+exports.updateIrrigationStatus = exports.stopIrrigation = exports.triggerIrrigation = exports.createIrrigationSchedule = exports.getIrrigationRecommendations = exports.calculateIrrigationNeed = void 0;
 const models_1 = require("../../models");
-const mqtt_1 = require("../../config/mqtt");
+const mqttHandler_1 = require("../../mqtt/mqttHandler");
 const satellite_service_1 = require("../satellite/satellite.service");
 const notification_service_1 = require("../notification/notification.service");
 // Crop-specific water requirements (liters per hectare per day)
@@ -23,7 +23,8 @@ const getWaterRequirement = (cropType) => {
 // Calculate irrigation need based on various factors
 const calculateIrrigationNeed = async (crop, farm, latestHealth, sensorData) => {
     try {
-        const waterReq = getWaterRequirement(crop.cropType);
+        const waterReq = getWaterRequirement(crop.cropType); // reserved for volume calc
+        void waterReq; // suppress unused-var warning until volume calc is wired in
         let urgency = 'low';
         let reason = '';
         let recommendedDuration = 30; // default 30 minutes
@@ -37,19 +38,26 @@ const calculateIrrigationNeed = async (crop, farm, latestHealth, sensorData) => 
             : null;
         // Use available moisture data
         const moisture = soilMoisture || satelliteMoisture;
-        // Get weather forecast
         const lat = parseFloat(farm.latitude.toString());
         const lon = parseFloat(farm.longitude.toString());
+        // Get weather forecast (Open-Meteo returns { daily: { time[], precipitation_sum[] } })
         const forecast = await (0, satellite_service_1.getWeatherForecast)(lat, lon);
-        // Check if rain is expected in next 24 hours
-        const rainExpected = forecast?.list?.some((item) => {
-            const itemTime = new Date(item.dt * 1000);
-            const now = new Date();
-            const hoursDiff = (itemTime.getTime() - now.getTime()) / (1000 * 60 * 60);
-            return hoursDiff <= 24 && item.rain && item.rain['3h'] > 5;
-        });
-        let weatherForecast = rainExpected
-            ? 'Rain expected in next 24 hours'
+        // Sum precipitation for the next 24 h from Open-Meteo daily array
+        const precipNext24h = (() => {
+            const times = forecast?.daily?.time ?? [];
+            const precip = forecast?.daily?.precipitation_sum ?? [];
+            const today = new Date().toISOString().slice(0, 10);
+            const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+            let total = 0;
+            times.forEach((t, i) => {
+                if (t === today || t === tomorrow)
+                    total += precip[i] ?? 0;
+            });
+            return total;
+        })();
+        const rainExpected = precipNext24h > 5; // >5 mm in next 24h
+        const weatherForecast = rainExpected
+            ? `Rain expected (~${precipNext24h.toFixed(1)} mm in 24h)`
             : 'No significant rain expected';
         // Decision logic
         if (moisture !== null) {
@@ -71,6 +79,12 @@ const calculateIrrigationNeed = async (crop, farm, latestHealth, sensorData) => 
             else if (moisture > 80) {
                 return null; // No irrigation needed
             }
+        }
+        else {
+            // No sensor data at all — recommend a low-urgency maintenance irrigation
+            urgency = 'low';
+            reason = 'No sensor data available — scheduled maintenance irrigation recommended';
+            recommendedDuration = 20;
         }
         // Adjust based on weather
         if (rainExpected && urgency !== 'critical') {
@@ -134,14 +148,17 @@ const getIrrigationRecommendations = async (farmId, farmerId) => {
             ]
         });
         // Get latest sensor readings
+        // Don't filter by deviceType — the combined ESP32 node may be registered
+        // as any type. Fetch all active devices and use the first one with readings.
         const devices = await models_1.IoTDevice.findAll({
-            where: { farmId, deviceType: 'soil_sensor', status: 'active' }
+            where: { farmId, status: 'active' }
         });
+        // Find the most recent sensor reading across all devices on the farm
         let latestSensorData = null;
         if (devices.length > 0) {
             latestSensorData = await models_1.SensorReading.findOne({
-                where: { deviceId: devices[0].id },
-                order: [['recordedAt', 'DESC']]
+                where: { deviceId: devices.map(d => d.id) },
+                order: [['recordedAt', 'DESC']],
             });
         }
         const recommendations = [];
@@ -203,11 +220,35 @@ const triggerIrrigation = async (scheduleId) => {
         // Send command to IoT device
         const device = schedule.device;
         if (device) {
-            (0, mqtt_1.sendIrrigationCommand)(device.deviceId, {
-                action: 'start',
+            // Device explicitly linked to schedule — use it directly
+            (0, mqttHandler_1.publishCommand)(schedule.farmId, device.deviceId, 'start', {
                 scheduleId: schedule.id,
                 durationMinutes: schedule.durationMinutes
             });
+        }
+        else {
+            // No device linked — find every active device on this farm and command all of them.
+            // This covers manual overrides where no specific device was selected.
+            const farmDevices = await models_1.IoTDevice.findAll({
+                where: { farmId: schedule.farmId, status: 'active' }
+            });
+            if (farmDevices.length > 0) {
+                for (const d of farmDevices) {
+                    (0, mqttHandler_1.publishCommand)(schedule.farmId, d.deviceId, 'start', {
+                        scheduleId: schedule.id,
+                        durationMinutes: schedule.durationMinutes
+                    });
+                }
+            }
+            else {
+                // Absolute last resort — no devices registered in DB at all.
+                // Uses the hardcoded device ID from config.h so at least a bare
+                // dev setup still works.
+                (0, mqttHandler_1.publishCommand)(schedule.farmId, 'node_a1', 'start', {
+                    scheduleId: schedule.id,
+                    durationMinutes: schedule.durationMinutes
+                });
+            }
         }
         return true;
     }
@@ -217,6 +258,53 @@ const triggerIrrigation = async (scheduleId) => {
     }
 };
 exports.triggerIrrigation = triggerIrrigation;
+// Stop immediate irrigation (Manual Override)
+const stopIrrigation = async (farmId) => {
+    try {
+        // Find any currently running schedules for this farm
+        const activeSchedules = await models_1.IrrigationSchedule.findAll({
+            where: { farmId, status: 'in_progress' },
+            include: [{ model: models_1.IoTDevice, as: 'device' }]
+        });
+        for (const schedule of activeSchedules) {
+            // Update status
+            await schedule.update({
+                status: 'completed',
+                completedAt: new Date()
+            });
+            const device = schedule.device;
+            if (device) {
+                (0, mqttHandler_1.publishCommand)(farmId, device.deviceId, 'stop', {
+                    scheduleId: schedule.id,
+                    reason: 'manual_override'
+                });
+            }
+            else {
+                (0, mqttHandler_1.publishCommand)(farmId, 'node_a1', 'stop', {
+                    scheduleId: schedule.id,
+                    reason: 'manual_override'
+                });
+            }
+        }
+        // If no active schedule, still broadcast a blanket stop to all devices on the farm just in case it was triggered outside a schedule
+        if (activeSchedules.length === 0) {
+            // No tracked schedule — broadcast stop to every active device on the farm
+            const devices = await models_1.IoTDevice.findAll({ where: { farmId, status: 'active' } });
+            for (const d of devices) {
+                (0, mqttHandler_1.publishCommand)(farmId, d.deviceId, 'stop', {});
+            }
+            if (devices.length === 0) {
+                (0, mqttHandler_1.publishCommand)(farmId, 'node_a1', 'stop', {});
+            }
+        }
+        return true;
+    }
+    catch (error) {
+        console.error('Stop irrigation error:', error);
+        return false;
+    }
+};
+exports.stopIrrigation = stopIrrigation;
 // Update irrigation status (called from MQTT handler)
 const updateIrrigationStatus = async (scheduleId, status, actualVolume) => {
     try {

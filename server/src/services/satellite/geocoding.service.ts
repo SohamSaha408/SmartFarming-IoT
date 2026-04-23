@@ -51,8 +51,12 @@ export const reverseGeocode = async (
       state: data.state || null,
       pincode: data.pincode || null
     };
-  } catch (error) {
-    console.error('Reverse geocoding error:', error);
+  } catch (error: any) {
+    if (error.response?.status === 402 || error.response?.status === 429) {
+      console.warn('Bhuvan API limit reached, using fallback');
+    } else {
+      console.error('Reverse geocoding error:', error.message || error);
+    }
     
     // Fallback: Try OpenStreetMap Nominatim
     try {

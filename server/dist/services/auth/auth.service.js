@@ -96,15 +96,23 @@ const register = async (phone, password, name) => {
 };
 exports.register = register;
 // Login farmer
-const login = async (phone, password) => {
+const login = async (identifier, password) => {
     try {
-        const normalizedPhone = normalizePhone(phone);
-        // Find farmer
-        const farmer = await models_1.Farmer.findOne({ where: { phone: normalizedPhone } });
+        let farmer;
+        // Check if identifier looks like an email using simple regex
+        const trimmedIdentifier = identifier.trim();
+        if (trimmedIdentifier.includes('@')) {
+            farmer = await models_1.Farmer.findOne({ where: { email: trimmedIdentifier } });
+        }
+        else {
+            // Treat as phone number
+            const normalizedPhone = normalizePhone(trimmedIdentifier);
+            farmer = await models_1.Farmer.findOne({ where: { phone: normalizedPhone } });
+        }
         if (!farmer) {
             return {
                 success: false,
-                message: 'Invalid phone number or password.'
+                message: 'Invalid email/phone or password.'
             };
         }
         // Verify password
@@ -112,7 +120,7 @@ const login = async (phone, password) => {
         if (!isValidPassword) {
             return {
                 success: false,
-                message: 'Invalid phone number or password.'
+                message: 'Invalid email/phone or password.'
             };
         }
         // Update last login

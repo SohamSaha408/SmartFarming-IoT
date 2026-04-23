@@ -303,7 +303,7 @@ export const markAsApplied = async (
       priority: 'low',
       title: 'Fertilization Applied',
       message: `${record.fertilzerType} applied to ${crop.cropType} (${actualQuantityKg}kg)`,
-      channels: ['in_app']
+      channels: ['in_app', 'email']
     });
   }
 

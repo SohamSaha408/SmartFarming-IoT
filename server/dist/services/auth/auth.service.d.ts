@@ -25,7 +25,7 @@ interface VerifyOtpResult {
     refreshToken?: string;
 }
 export declare const register: (phone: string, password: string, name?: string) => Promise<RegisterResult>;
-export declare const login: (phone: string, password: string) => Promise<LoginResult>;
+export declare const login: (identifier: string, password: string) => Promise<LoginResult>;
 export declare const getFarmerProfile: (farmerId: string) => Promise<Farmer | null>;
 export declare const updateFarmerProfile: (farmerId: string, data: {
     name?: string;

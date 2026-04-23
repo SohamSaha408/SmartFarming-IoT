@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 // WiFi Configuration
-#define WIFI_SSID "Galaxy A20sbd1f"
+#define WIFI_SSID "GalaxyA20sbd1f"
 #define WIFI_PASSWORD "nigga6969"
 
 // MQTT Configuration
@@ -13,7 +13,7 @@
 
 // Device Identity
 #define FARM_ID "farm_001"
-#define DEVICE_ID "node_a1"
+#define DEVICE_ID "node_pump_1"
 
 // Pin Definitions (ESP32 DEVKIT V1)
 #define PIN_SOIL_MOISTURE 32  // Analog

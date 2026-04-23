@@ -25,8 +25,6 @@ export default function AddDeviceModal({ onClose, onDeviceAdded, preselectedFarm
         deviceId: '',
         deviceType: 'soil_sensor',
         farmId: preselectedFarmId || '',
-        latitude: '',
-        longitude: '',
     })
 
     useEffect(() => {
@@ -52,23 +50,18 @@ export default function AddDeviceModal({ onClose, onDeviceAdded, preselectedFarm
 
         setIsLoading(true)
         try {
-            await devicesAPI.register({
-                ...formData,
-                latitude: formData.latitude ? parseFloat(formData.latitude) : null,
-                longitude: formData.longitude ? parseFloat(formData.longitude) : null,
-            })
+            await devicesAPI.register(formData)
             toast.success('Device added successfully!')
             onDeviceAdded()
             onClose()
-        } catch (error) {
+        } catch (error: any) {
             console.error(error)
-            toast.error('Failed to add device')
+            const errorMessage = error.response?.data?.error || 'Failed to add device'
+            toast.error(errorMessage)
         } finally {
             setIsLoading(false)
         }
     }
-
-    console.log('AddDeviceModal render cycle')
 
     return (
         <div className="fixed inset-0 z-[100] overflow-y-auto">
@@ -157,37 +150,6 @@ export default function AddDeviceModal({ onClose, onDeviceAdded, preselectedFarm
                                 </select>
                             </div>
                         )}
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Latitude
-                                </label>
-                                <input
-                                    type="number"
-                                    name="latitude"
-                                    value={formData.latitude}
-                                    onChange={handleChange}
-                                    className="input"
-                                    placeholder="e.g., 28.6139"
-                                    step="any"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Longitude
-                                </label>
-                                <input
-                                    type="number"
-                                    name="longitude"
-                                    value={formData.longitude}
-                                    onChange={handleChange}
-                                    className="input"
-                                    placeholder="e.g., 77.2090"
-                                    step="any"
-                                />
-                            </div>
-                        </div>
 
                         <div className="flex gap-3 pt-4">
                             <button
